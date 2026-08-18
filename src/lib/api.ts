@@ -2,19 +2,22 @@ import type { Product, ProductResponse } from "../types/tiktok";
 import type { NormalizedUrl } from "./signedUrl";
 
 /**
- * Camada de chamada à API do TikTok Shop, via proxy do Vite.
+ * Camada de chamada à API do TikTok Shop, sempre via proxy de mesma origem:
+ * em desenvolvimento é o proxy do Vite (vite.config.ts); em produção na
+ * Vercel é a Edge Function api/tts/[...path].ts. O caminho /api/tts é o
+ * mesmo nos dois ambientes, então o frontend não muda.
  *
  * PONTO SENSÍVEL — montagem da requisição:
- * A URL final é uma CONCATENAÇÃO de strings: "/tts" + pathWithQuery.
+ * A URL final é uma CONCATENAÇÃO de strings: "/api/tts" + pathWithQuery.
  * `pathWithQuery` já contém path e query exatamente como vieram da URL
  * assinada (ver `signedUrl.ts`). Nada aqui usa URL/URLSearchParams nem
  * encodeURIComponent — qualquer re-encoding ou reordenação invalidaria o
- * `sign` e a API devolveria o erro 106001. O proxy do Vite remove o
- * prefixo "/tts" e repassa o restante intacto (ver vite.config.ts).
+ * `sign` e a API devolveria o erro 106001. Os proxies removem o prefixo
+ * "/api/tts" e repassam o restante intacto.
  */
 
-/** Prefixo tratado pelo proxy do Vite (ver vite.config.ts). */
-const PROXY_PREFIX = "/tts";
+/** Prefixo atendido pelo proxy do Vite (dev) e pela Edge Function (Vercel). */
+const PROXY_PREFIX = "/api/tts";
 
 export type FetchResult =
   | { kind: "ok"; response: ProductResponse; product: Product }

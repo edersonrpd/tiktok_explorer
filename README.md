@@ -24,17 +24,35 @@ npm test        # testes das funções puras (normalização/validação da URL)
 npm run build   # typecheck estrito + build de produção
 ```
 
-> O build de produção serve apenas para conferência: em produção não há o
-> proxy do dev server, então a chamada à API depende de outro intermediário.
+## Hospedagem na Vercel
 
-## Por que existe o proxy `/tts`
+O projeto está pronto para deploy na Vercel sem configuração extra: importe
+o repositório (preset **Vite** é detectado automaticamente) ou rode
+`vercel` na raiz. O build gera o frontend estático e a pasta [`api/`](api/)
+vira uma **Edge Function** ([`api/tts/[...path].ts`](api/tts/%5B...path%5D.ts))
+que atende `/api/tts/*` em produção, fazendo o papel que o proxy do Vite
+faz em desenvolvimento. Como a chamada à API do TikTok sai do servidor da
+Vercel — e não do navegador — o CORS deixa de ser problema.
+
+A função repassa path + query por **fatiamento de string** (sem parse da
+query) justamente para não violar a regra da assinatura abaixo, e usa o
+runtime Edge de propósito: nele o handler recebe a URL original intacta,
+sem a mescla de parâmetros de rota que o runtime Node injeta em rotas
+dinâmicas.
+
+## Por que existe o proxy `/api/tts`
 
 A API `open-api.tiktokglobalshop.com` não envia headers CORS, então o
-navegador bloqueia chamadas diretas de uma página web. O dev server do Vite
-resolve isso: o frontend chama `/tts/...` (mesma origem) e o Vite repassa a
-requisição para `https://open-api.tiktokglobalshop.com`, removendo apenas o
-prefixo `/tts` — sem tocar na query string, sem injetar headers relevantes e
-sem alterar o path. A configuração está em [`vite.config.ts`](vite.config.ts).
+navegador bloqueia chamadas diretas de uma página web. O frontend sempre
+chama `/api/tts/...` (mesma origem) e um intermediário repassa para
+`https://open-api.tiktokglobalshop.com`, removendo apenas o prefixo
+`/api/tts` — sem tocar na query string, sem injetar headers relevantes e
+sem alterar o path:
+
+- **Desenvolvimento** (`npm run dev`): o proxy do dev server do Vite,
+  configurado em [`vite.config.ts`](vite.config.ts).
+- **Produção (Vercel)**: a Edge Function em
+  [`api/tts/[...path].ts`](api/tts/%5B...path%5D.ts).
 
 ## ⚠️ Nunca modifique a query string assinada
 
@@ -52,7 +70,9 @@ Por isso, no código:
   essas APIs re-codificam caracteres e reordenam parâmetros.
 - **Nunca** aplicamos `encodeURIComponent` em nada que veio da URL assinada.
 - A URL final da requisição é uma concatenação pura:
-  `"/tts" + pathWithQuery` ([`src/lib/api.ts`](src/lib/api.ts)).
+  `"/api/tts" + pathWithQuery` ([`src/lib/api.ts`](src/lib/api.ts)), e os
+  dois proxies (Vite e Edge Function) repassam o restante também por
+  operação de string, sem remontar a query.
 - O parse de parâmetros exibido no painel serve só para **conferência
   visual e validação** — o que vai para a rede é sempre a string original.
 
@@ -85,11 +105,13 @@ path + query intactos.
 ## Estrutura
 
 ```
+api/
+  tts/[...path].ts       # proxy de produção (Vercel Edge Function)
 src/
   types/tiktok.ts        # tipagem completa da resposta da API
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
   lib/signedUrl.test.ts  # testes das funções puras
-  lib/api.ts             # camada de chamada (fetch via proxy /tts)
+  lib/api.ts             # camada de chamada (fetch via proxy /api/tts)
   lib/errorCodes.ts      # tradução dos códigos de erro
   lib/diagnostics.ts     # verificações de inconsistência de cadastro
   lib/format.ts          # formatação (datas BR, preço, idade)

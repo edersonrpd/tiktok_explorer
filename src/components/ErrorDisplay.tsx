@@ -20,7 +20,7 @@ export function ErrorDisplay({ result }: { result: Exclude<FetchResult, { kind: 
     return (
       <ErrorBox
         title={`Resposta inesperada (HTTP ${result.httpStatus})`}
-        action="A resposta não é JSON da API do TikTok. Verifique se o proxy do Vite está configurado e o dev server rodando."
+        action="A resposta não é JSON da API do TikTok. Verifique se o proxy /api/tts está ativo (dev server do Vite rodando, ou função api/tts publicada na Vercel)."
         original={result.bodyText.slice(0, 500)}
       />
     );

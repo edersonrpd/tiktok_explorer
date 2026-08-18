@@ -44,5 +44,5 @@ export function explainErrorCode(code: number): ErrorExplanation {
 export const NETWORK_ERROR_EXPLANATION: ErrorExplanation = {
   title: "Falha de rede",
   action:
-    "Não foi possível alcançar a API. Verifique se o servidor de desenvolvimento do Vite está rodando (npm run dev) — a chamada passa pelo proxy /tts dele.",
+    "Não foi possível alcançar a API. Em desenvolvimento, verifique se o servidor do Vite está rodando (npm run dev); hospedado na Vercel, verifique sua conexão e se o deploy inclui a função api/tts. A chamada sempre passa pelo proxy /api/tts.",
 };
