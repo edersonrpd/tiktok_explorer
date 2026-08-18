@@ -3,6 +3,7 @@ import { fetchProduct, type FetchResult } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
 import type { NormalizedUrl } from "./lib/signedUrl";
 import type { Product, ProductResponse } from "./types/tiktok";
+import { EndpointBuilder } from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
 import { ErrorDisplay } from "./components/ErrorDisplay";
 import { ProductHeader } from "./components/ProductHeader";
@@ -13,6 +14,7 @@ import { AttributesCard, PackageCard } from "./components/AttributesCard";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { RawJson } from "./components/RawJson";
 import { HistoryList } from "./components/HistoryList";
+import { Card } from "./components/ui";
 
 const TOKEN_STORAGE_KEY = "tiktok-product-viewer.access-token";
 const HISTORY_LIMIT = 10;
@@ -98,14 +100,15 @@ export default function App() {
 
       <main className="mx-auto grid max-w-6xl gap-4 px-4 py-4 lg:grid-cols-[380px_1fr]">
         <div className="space-y-4">
-          <section className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <EndpointBuilder />
+          <Card title="2. Consultar anúncio">
             <QueryForm
               token={token}
               onTokenChange={setToken}
               onSubmit={(n) => void handleSubmit(n)}
               loading={view.kind === "loading"}
             />
-          </section>
+          </Card>
           <HistoryList
             entries={history}
             onSelect={handleHistorySelect}

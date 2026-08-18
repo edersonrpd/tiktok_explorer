@@ -102,6 +102,11 @@ path + query intactos.
 
 ## Funcionalidades
 
+- **Montador de endpoint (passo 1)**: informe o código do anúncio
+  (`product_id`) e a aplicação monta `/product/202309/products/<id>`, com
+  botão de copiar — é esse caminho que vai para o sistema interno de
+  assinatura. Aceita o ID puro e também tolera colar um path ou URL
+  inteiro (fica com o último segmento antes da query).
 - **Validação antes de enviar**: bloqueia placeholder `{product_id}` não
   substituído e parâmetros obrigatórios ausentes (`shop_cipher`, `app_key`,
   `timestamp`, `sign`); avisa (sem bloquear) quando o `timestamp` tem mais
@@ -129,6 +134,7 @@ api/
   tts.ts                 # proxy de produção (Vercel Edge Function)
 src/
   types/tiktok.ts        # tipagem completa da resposta da API
+  lib/endpoint.ts        # monta o endpoint a partir do código do anúncio
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
   lib/*.test.ts          # testes das funções puras
