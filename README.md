@@ -26,33 +26,53 @@ npm run build   # typecheck estrito + build de produção
 
 ## Hospedagem na Vercel
 
-O projeto está pronto para deploy na Vercel sem configuração extra: importe
-o repositório (preset **Vite** é detectado automaticamente) ou rode
-`vercel` na raiz. O build gera o frontend estático e a pasta [`api/`](api/)
-vira uma **Edge Function** ([`api/tts/[...path].ts`](api/tts/%5B...path%5D.ts))
-que atende `/api/tts/*` em produção, fazendo o papel que o proxy do Vite
-faz em desenvolvimento. Como a chamada à API do TikTok sai do servidor da
-Vercel — e não do navegador — o CORS deixa de ser problema.
+O projeto está pronto para deploy: importe o repositório na Vercel (o
+[`vercel.json`](vercel.json) já declara framework, build e output) ou rode
+`vercel` na raiz. O build gera o frontend estático e [`api/tts.ts`](api/tts.ts)
+vira uma **Edge Function** que atende `/api/tts` em produção, fazendo o
+papel que o middleware do Vite faz em desenvolvimento. Como a chamada à API
+do TikTok sai do servidor da Vercel — e não do navegador — o CORS deixa de
+ser problema.
 
-A função repassa path + query por **fatiamento de string** (sem parse da
-query) justamente para não violar a regra da assinatura abaixo, e usa o
-runtime Edge de propósito: nele o handler recebe a URL original intacta,
-sem a mescla de parâmetros de rota que o runtime Node injeta em rotas
-dinâmicas.
+Se o app responder `404 NOT_FOUND` ao consultar, é a Vercel dizendo que a
+função não existe naquele deployment: abra o deployment → aba **Functions**
+e confirme que `api/tts.ts` aparece lá.
 
 ## Por que existe o proxy `/api/tts`
 
 A API `open-api.tiktokglobalshop.com` não envia headers CORS, então o
 navegador bloqueia chamadas diretas de uma página web. O frontend sempre
-chama `/api/tts/...` (mesma origem) e um intermediário repassa para
-`https://open-api.tiktokglobalshop.com`, removendo apenas o prefixo
-`/api/tts` — sem tocar na query string, sem injetar headers relevantes e
-sem alterar o path:
+chama `/api/tts` (mesma origem) e um intermediário repassa para
+`https://open-api.tiktokglobalshop.com`:
 
-- **Desenvolvimento** (`npm run dev`): o proxy do dev server do Vite,
-  configurado em [`vite.config.ts`](vite.config.ts).
-- **Produção (Vercel)**: a Edge Function em
-  [`api/tts/[...path].ts`](api/tts/%5B...path%5D.ts).
+- **Desenvolvimento** (`npm run dev`): um middleware do dev server do Vite,
+  registrado em [`vite.config.ts`](vite.config.ts).
+- **Produção (Vercel)**: a Edge Function em [`api/tts.ts`](api/tts.ts).
+
+Os dois executam **a mesma lógica compartilhada**
+([`src/lib/proxyTarget.ts`](src/lib/proxyTarget.ts)), então dev e produção
+se comportam igual, inclusive na validação.
+
+### Por que a rota é estática e o alvo vai em um header
+
+O endpoint é `/api/tts` — uma rota **estática** — e o path + query
+assinados viajam no header `x-tts-target`, nunca na URL da requisição.
+Essa decisão resolve dois problemas de uma vez:
+
+1. **Roteamento**: rotas dinâmicas catch-all (`api/tts/[...path].ts`) podem
+   não ser registradas como função na Vercel, devolvendo o 404 da própria
+   plataforma. Uma rota estática não tem esse risco.
+2. **Integridade da assinatura**: o roteador de rotas dinâmicas *reescreve*
+   a URL, acrescentando os parâmetros de rota à query string — corrompendo
+   exatamente a query sobre a qual o `sign` foi calculado. Em um header, o
+   valor é uma string opaca que nenhum roteador interpreta.
+
+O proxy só valida o alvo por segurança (ASCII imprimível, começa com `/`,
+não tenta apontar para outro host) e o concatena ao host de destino. Ele
+também usa `redirect: "manual"`, para nunca reenviar o access token a um
+destino inesperado, e responde com `cache-control: no-store`, já que a URL
+do proxy é constante e uma resposta em cache poderia ser reaproveitada
+para outro produto.
 
 ## ⚠️ Nunca modifique a query string assinada
 
@@ -69,10 +89,10 @@ Por isso, no código:
 - **Nunca** usamos `new URL()` / `URLSearchParams` para reconstruir a query —
   essas APIs re-codificam caracteres e reordenam parâmetros.
 - **Nunca** aplicamos `encodeURIComponent` em nada que veio da URL assinada.
-- A URL final da requisição é uma concatenação pura:
-  `"/api/tts" + pathWithQuery` ([`src/lib/api.ts`](src/lib/api.ts)), e os
-  dois proxies (Vite e Edge Function) repassam o restante também por
-  operação de string, sem remontar a query.
+- O path + query assinados são enviados **como header opaco**
+  ([`src/lib/api.ts`](src/lib/api.ts)) e o proxy apenas os concatena ao
+  host de destino ([`src/lib/proxyTarget.ts`](src/lib/proxyTarget.ts)) —
+  nenhum roteador chega a interpretá-los.
 - O parse de parâmetros exibido no painel serve só para **conferência
   visual e validação** — o que vai para a rede é sempre a string original.
 
@@ -106,11 +126,12 @@ path + query intactos.
 
 ```
 api/
-  tts/[...path].ts       # proxy de produção (Vercel Edge Function)
+  tts.ts                 # proxy de produção (Vercel Edge Function)
 src/
   types/tiktok.ts        # tipagem completa da resposta da API
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
-  lib/signedUrl.test.ts  # testes das funções puras
+  lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
+  lib/*.test.ts          # testes das funções puras
   lib/api.ts             # camada de chamada (fetch via proxy /api/tts)
   lib/errorCodes.ts      # tradução dos códigos de erro
   lib/diagnostics.ts     # verificações de inconsistência de cadastro

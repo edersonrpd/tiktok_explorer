@@ -16,11 +16,25 @@ export function ErrorDisplay({ result }: { result: Exclude<FetchResult, { kind: 
     );
   }
 
+  if (result.kind === "proxy-error") {
+    return (
+      <ErrorBox
+        title={`O proxy recusou ou não completou a chamada (HTTP ${result.httpStatus})`}
+        action="O erro veio do intermediário (/api/tts), não da API do TikTok. A mensagem abaixo diz o motivo."
+        original={result.message}
+      />
+    );
+  }
+
   if (result.kind === "http-error") {
     return (
       <ErrorBox
         title={`Resposta inesperada (HTTP ${result.httpStatus})`}
-        action="A resposta não é JSON da API do TikTok. Verifique se o proxy /api/tts está ativo (dev server do Vite rodando, ou função api/tts publicada na Vercel)."
+        action={
+          result.httpStatus === 404
+            ? "O endpoint /api/tts não existe nesta hospedagem — a resposta é a página 404 do servidor, não da API do TikTok. Em desenvolvimento, rode npm run dev; na Vercel, confirme que o deploy inclui a função api/tts.ts (aba Functions do deployment)."
+            : "A resposta não é JSON da API do TikTok. Verifique se o proxy /api/tts está ativo (dev server do Vite rodando, ou função api/tts publicada na Vercel)."
+        }
         original={result.bodyText.slice(0, 500)}
       />
     );

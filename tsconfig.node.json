@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023"],
+    // DOM entra pelos tipos de fetch/Response usados pelo middleware de
+    // proxy do dev server (o Node 18+ expõe essas APIs globalmente).
+    "lib": ["ES2023", "DOM"],
     "module": "ESNext",
     "skipLibCheck": true,
 
@@ -16,5 +18,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "src/lib/proxyTarget.ts", "src/lib/signedUrl.ts"]
 }
