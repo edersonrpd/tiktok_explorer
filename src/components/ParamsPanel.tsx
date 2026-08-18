@@ -1,12 +1,20 @@
-import { REQUIRED_PARAMS, type QueryParam } from "../lib/signedUrl";
+import { requiredParamsFor, type QueryParam } from "../lib/signedUrl";
+import type { ResourceKind } from "../lib/endpoint";
 
 /**
  * Painel sempre visível com os parâmetros detectados na query da URL
  * assinada, exatamente como serão enviados (valores brutos, sem decode),
  * para conferência visual: devem ser exatamente 4 e nada a mais.
  */
-export function ParamsPanel({ params }: { params: QueryParam[] }) {
-  const requiredSet = new Set<string>(REQUIRED_PARAMS);
+export function ParamsPanel({
+  params,
+  resourceKind,
+}: {
+  params: QueryParam[];
+  resourceKind: ResourceKind;
+}) {
+  const expected = requiredParamsFor(resourceKind);
+  const requiredSet = new Set<string>(expected);
   const extras = params.filter((p) => !requiredSet.has(p.name));
 
   return (
@@ -15,10 +23,12 @@ export function ParamsPanel({ params }: { params: QueryParam[] }) {
         <span>Parâmetros detectados na URL</span>
         <span
           className={
-            params.length === 4 && extras.length === 0 ? "text-emerald-600" : "text-amber-600"
+            params.length === expected.length && extras.length === 0
+              ? "text-emerald-600"
+              : "text-amber-600"
           }
         >
-          {params.length} de 4 esperados
+          {params.length} de {expected.length} esperados
           {extras.length > 0 ? ` (${extras.length} extra!)` : ""}
         </span>
       </p>

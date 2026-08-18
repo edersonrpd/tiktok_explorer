@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import type { ProductResponse } from "../types/tiktok";
+import type { TikTokApiResponse } from "../types/tiktok";
 import { CopyButton } from "./ui";
 
 /** Seção recolhida com o JSON completo da resposta, com copiar e baixar. */
-export function RawJson({ response }: { response: ProductResponse }) {
+export function RawJson({ response }: { response: TikTokApiResponse<unknown> }) {
   const [open, setOpen] = useState(false);
   const json = useMemo(() => JSON.stringify(response, null, 2), [response]);
 
@@ -12,7 +12,7 @@ export function RawJson({ response }: { response: ProductResponse }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `tiktok-product-${response.data?.id ?? "resposta"}.json`;
+    a.download = `tiktok-${response.request_id !== "" ? response.request_id : "resposta"}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };

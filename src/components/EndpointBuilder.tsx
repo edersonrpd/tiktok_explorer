@@ -1,30 +1,74 @@
 import { useMemo, useState } from "react";
-import { buildProductEndpoint } from "../lib/endpoint";
+import { buildOrderEndpoint, buildProductEndpoint, parseOrderIds } from "../lib/endpoint";
 import { Card, CopyButton } from "./ui";
 
+type BuilderTab = "product" | "order";
+
 /**
- * Passo 1 do fluxo: informar o código do anúncio e obter o endpoint que
- * será enviado ao sistema interno de assinatura.
+ * Passo 1 do fluxo: informar os códigos e obter o endpoint que será
+ * enviado ao sistema interno de assinatura.
+ *
+ * Produto e pedidos diferem: o ID do produto vai no path, enquanto os IDs
+ * de pedido vão na query (`ids`) e por isso são assinados junto — daí o
+ * caminho gerado para pedidos já sair com `?ids=...`.
  */
 export function EndpointBuilder() {
+  const [tab, setTab] = useState<BuilderTab>("product");
   const [productId, setProductId] = useState("");
-  const result = useMemo(() => buildProductEndpoint(productId), [productId]);
-  const typed = productId.trim() !== "";
+  const [orderIds, setOrderIds] = useState("");
+
+  const productResult = useMemo(() => buildProductEndpoint(productId), [productId]);
+  const orderResult = useMemo(() => buildOrderEndpoint(orderIds), [orderIds]);
+  const parsedOrderIds = useMemo(() => parseOrderIds(orderIds), [orderIds]);
+
+  const isProduct = tab === "product";
+  const result = isProduct ? productResult : orderResult;
+  const typed = (isProduct ? productId : orderIds).trim() !== "";
 
   return (
     <Card title="1. Montar endpoint para assinatura">
-      <label htmlFor="product-id" className="mb-1 block text-xs font-medium text-slate-600">
-        Código do anúncio (product_id)
-      </label>
-      <input
-        id="product-id"
-        value={productId}
-        onChange={(e) => setProductId(e.target.value)}
-        spellCheck={false}
-        inputMode="numeric"
-        placeholder="1736320032383141477"
-        className="w-full rounded border border-slate-300 px-3 py-2 font-mono text-xs focus:border-slate-500 focus:outline-none"
-      />
+      <div className="mb-3 flex gap-1 rounded bg-slate-100 p-0.5">
+        <TabButton active={isProduct} onClick={() => setTab("product")} label="Anúncio" />
+        <TabButton active={!isProduct} onClick={() => setTab("order")} label="Pedidos" />
+      </div>
+
+      {isProduct ? (
+        <>
+          <label htmlFor="product-id" className="mb-1 block text-xs font-medium text-slate-600">
+            Código do anúncio (product_id)
+          </label>
+          <input
+            id="product-id"
+            value={productId}
+            onChange={(e) => setProductId(e.target.value)}
+            spellCheck={false}
+            inputMode="numeric"
+            placeholder="1736320032383141477"
+            className="w-full rounded border border-slate-300 px-3 py-2 font-mono text-xs focus:border-slate-500 focus:outline-none"
+          />
+        </>
+      ) : (
+        <>
+          <label htmlFor="order-ids" className="mb-1 block text-xs font-medium text-slate-600">
+            Códigos de pedido (order ids) — um ou vários
+          </label>
+          <textarea
+            id="order-ids"
+            value={orderIds}
+            onChange={(e) => setOrderIds(e.target.value)}
+            spellCheck={false}
+            rows={3}
+            placeholder={"576461413038785752, 576461413038785753\nou um por linha (colando de planilha)"}
+            className="w-full rounded border border-slate-300 px-3 py-2 font-mono text-xs leading-relaxed focus:border-slate-500 focus:outline-none"
+          />
+          {parsedOrderIds.length > 0 && (
+            <p className="mt-1 text-[11px] text-slate-500">
+              {parsedOrderIds.length} pedido(s) reconhecido(s). Separe por vírgula, espaço ou
+              quebra de linha — repetidos são removidos.
+            </p>
+          )}
+        </>
+      )}
 
       {typed && !result.ok && (
         <p className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800">
@@ -44,7 +88,30 @@ export function EndpointBuilder() {
       <p className="mt-2 text-[11px] text-slate-400">
         Envie este caminho ao sistema interno de assinatura. Ele acrescenta shop_cipher, app_key,
         timestamp e sign, e devolve a URL assinada para colar no passo 2.
+        {!isProduct && " O ids já vai no caminho porque é assinado junto com os demais parâmetros."}
       </p>
     </Card>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 rounded px-3 py-1 text-xs font-medium ${
+        active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+      }`}
+    >
+      {label}
+    </button>
   );
 }

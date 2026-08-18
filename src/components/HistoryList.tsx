@@ -29,9 +29,9 @@ export function HistoryList({
                   activeId === entry.key ? "bg-slate-50" : ""
                 }`}
               >
-                <p className="truncate text-xs font-medium text-slate-800">{entry.title}</p>
-                <p className="font-mono text-[10px] text-slate-400">
-                  {entry.productId} · {entry.time.toLocaleTimeString("pt-BR")}
+                <p className="truncate text-xs font-medium text-slate-800">{entry.label}</p>
+                <p className="truncate font-mono text-[10px] text-slate-400">
+                  {entry.subtitle} · {entry.time.toLocaleTimeString("pt-BR")}
                 </p>
               </button>
             </li>

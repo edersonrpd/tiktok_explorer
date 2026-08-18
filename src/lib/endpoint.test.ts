@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildProductEndpoint, cleanProductId } from "./endpoint";
+import {
+  buildOrderEndpoint,
+  buildProductEndpoint,
+  cleanProductId,
+  detectResourceKind,
+  parseOrderIds,
+} from "./endpoint";
 
 describe("buildProductEndpoint", () => {
   it("monta o endpoint a partir do código do anúncio", () => {
@@ -41,5 +47,51 @@ describe("cleanProductId", () => {
 
   it("remove aspas de copiar/colar", () => {
     expect(cleanProductId('"1736320032383141477"')).toBe("1736320032383141477");
+  });
+});
+
+describe("buildOrderEndpoint", () => {
+  it("monta o endpoint com um único pedido", () => {
+    expect(buildOrderEndpoint("576461413038785752")).toEqual({
+      ok: true,
+      path: "/order/202507/orders?ids=576461413038785752",
+    });
+  });
+
+  it("junta vários IDs com vírgula literal, como na documentação", () => {
+    const result = buildOrderEndpoint("57668123555,57668123556");
+    expect(result.ok && result.path).toBe("/order/202507/orders?ids=57668123555,57668123556");
+  });
+
+  it("aceita IDs separados por quebra de linha (colar de planilha)", () => {
+    const result = buildOrderEndpoint("576461413038785752\n576461413038785753\n");
+    expect(result.ok && result.path).toBe(
+      "/order/202507/orders?ids=576461413038785752,576461413038785753",
+    );
+  });
+
+  it("remove IDs repetidos preservando a ordem", () => {
+    expect(parseOrderIds("111, 222, 111")).toEqual(["111", "222"]);
+  });
+
+  it("recusa lista vazia", () => {
+    expect(buildOrderEndpoint("  \n ").ok).toBe(false);
+  });
+
+  it("recusa ID não numérico apontando qual é", () => {
+    const result = buildOrderEndpoint("576461413038785752, ABC123");
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.reason).toContain("ABC123");
+  });
+});
+
+describe("detectResourceKind", () => {
+  it("reconhece produto e pedido pelo path", () => {
+    expect(detectResourceKind("/product/202309/products/1")).toBe("product");
+    expect(detectResourceKind("/order/202507/orders")).toBe("order");
+  });
+
+  it("classifica endpoints desconhecidos como other", () => {
+    expect(detectResourceKind("/finance/202309/statements")).toBe("other");
   });
 });

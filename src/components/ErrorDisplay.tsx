@@ -1,11 +1,11 @@
-import type { FetchResult } from "../lib/api";
+import type { FetchFailure } from "../lib/api";
 import { explainErrorCode, NETWORK_ERROR_EXPLANATION } from "../lib/errorCodes";
 
 /**
  * Erros traduzidos para causa provável + ação, nunca JSON cru.
  * O request_id sempre aparece — é o que o suporte do TikTok pede.
  */
-export function ErrorDisplay({ result }: { result: Exclude<FetchResult, { kind: "ok" }> }) {
+export function ErrorDisplay({ result }: { result: FetchFailure }) {
   if (result.kind === "network-error") {
     return (
       <ErrorBox

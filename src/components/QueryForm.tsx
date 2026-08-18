@@ -105,7 +105,7 @@ export function QueryForm({ token, onTokenChange, onSubmit, loading }: QueryForm
         </div>
       )}
 
-      <ParamsPanel params={validation.params} />
+      <ParamsPanel params={validation.params} resourceKind={validation.resourceKind} />
 
       <button
         type="button"

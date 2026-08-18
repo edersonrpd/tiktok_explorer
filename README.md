@@ -1,9 +1,15 @@
 # tiktok-product-viewer
 
-Aplicação web (React + Vite + TypeScript) para consultar anúncios da API do
-TikTok Shop a partir de uma **URL já assinada** por um sistema interno e
-exibir o resultado de forma legível: cabeçalho do produto, galeria, tabela
-de variações (SKUs), diagnóstico de integração e JSON bruto.
+Aplicação web (React + Vite + TypeScript) para consultar **anúncios e
+pedidos** da API do TikTok Shop a partir de uma **URL já assinada** por um
+sistema interno, exibindo o resultado de forma legível.
+
+Endpoints suportados:
+
+| Recurso | Endpoint | Onde vai o código |
+|---|---|---|
+| Anúncio | `/product/202309/products/{id}` | no path |
+| Pedidos | `/order/202507/orders?ids=a,b` | na **query** (`ids`) |
 
 Esta aplicação **não** calcula `sign` e **não** pede `app_secret`. O fluxo é
 sempre: colar a URL assinada + o access token → GET → resultado.
@@ -102,23 +108,39 @@ path + query intactos.
 
 ## Funcionalidades
 
-- **Montador de endpoint (passo 1)**: informe o código do anúncio
-  (`product_id`) e a aplicação monta `/product/202309/products/<id>`, com
-  botão de copiar — é esse caminho que vai para o sistema interno de
-  assinatura. Aceita o ID puro e também tolera colar um path ou URL
-  inteiro (fica com o último segmento antes da query).
+- **Montador de endpoint (passo 1)**, com abas para anúncio e pedidos:
+  - *Anúncio*: informe o `product_id` e a aplicação monta
+    `/product/202309/products/<id>`. Aceita o ID puro e tolera colar um
+    path ou URL inteiro (fica com o último segmento antes da query).
+  - *Pedidos*: informe um ou vários order ids — separados por vírgula,
+    espaço ou quebra de linha, para colar direto de planilha — e a
+    aplicação monta `/order/202507/orders?ids=a,b`, removendo repetidos.
+    O `ids` já sai no caminho porque **faz parte da query assinada**:
+    acrescentá-lo depois da assinatura invalidaria o `sign`.
+
+  Nos dois casos há botão de copiar, e o caminho gerado é o que vai para o
+  sistema interno de assinatura.
+- **Tipo de recurso detectado pelo path** da URL assinada, não pela aba
+  escolhida: colar uma URL de pedido com a aba de anúncio aberta continua
+  funcionando, e a validação passa a exigir `ids`.
 - **Validação antes de enviar**: bloqueia placeholder `{product_id}` não
   substituído e parâmetros obrigatórios ausentes (`shop_cipher`, `app_key`,
   `timestamp`, `sign`); avisa (sem bloquear) quando o `timestamp` tem mais
   de 4 minutos.
 - **Painel de parâmetros** sempre visível com nome e valor brutos, para
-  conferir que são exatamente 4 e nada a mais.
+  conferir que são exatamente os esperados e nada a mais (4 para anúncio,
+  5 para pedidos por causa do `ids`).
 - **Erros traduzidos**: `106001`/`10008` (assinatura), `36009004` (token),
   `12000000` (`shop_cipher`) e falha de rede viram causa provável + ação,
   sempre com o `request_id` (o que o suporte do TikTok pede).
-- **Resultado em cartões**: cabeçalho, breadcrumb de categorias, galeria com
-  vídeo, tabela de SKUs (com botão de copiar a coluna `seller_sku`),
-  descrição sanitizada com DOMPurify, atributos, dimensões/peso.
+- **Resultado em cartões**:
+  - *Anúncio*: cabeçalho, breadcrumb de categorias, galeria com vídeo,
+    tabela de SKUs (com botão de copiar a coluna `seller_sku`), descrição
+    sanitizada com DOMPurify, atributos, dimensões/peso.
+  - *Pedidos*: um cartão por pedido com status, datas, entrega, rastreio,
+    tabela de itens (também com copiar a coluna `seller_sku`), pagamento e
+    destinatário. IDs solicitados que não voltaram na resposta são
+    sinalizados.
 - **Diagnóstico de integração**: alertas automáticos de `external_product_id`
   ambíguo, `seller_sku` vazio/duplicado, estoque baixo, preços divergentes,
   EAN ausente e descrição escrita para uma única cor.
@@ -134,7 +156,7 @@ api/
   tts.ts                 # proxy de produção (Vercel Edge Function)
 src/
   types/tiktok.ts        # tipagem completa da resposta da API
-  lib/endpoint.ts        # monta o endpoint a partir do código do anúncio
+  lib/endpoint.ts        # monta os endpoints de anúncio e de pedidos
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
   lib/*.test.ts          # testes das funções puras

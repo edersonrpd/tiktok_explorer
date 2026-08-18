@@ -15,10 +15,28 @@
  * EXIBIÇÃO e VALIDAÇÃO — o que vai para a rede é sempre a string original.
  */
 
+import { detectResourceKind, type ResourceKind } from "./endpoint";
+
 export const TIKTOK_API_HOST = "https://open-api.tiktokglobalshop.com";
 
-/** Parâmetros que toda URL assinada precisa carregar. */
-export const REQUIRED_PARAMS = ["shop_cipher", "app_key", "timestamp", "sign"] as const;
+/** Parâmetros de assinatura, presentes em toda URL assinada. */
+export const SIGNATURE_PARAMS = ["shop_cipher", "app_key", "timestamp", "sign"] as const;
+
+/**
+ * Parâmetros de negócio exigidos por endpoint, além dos de assinatura.
+ * Em /order/.../orders os IDs vão na query (`ids`) e por isso são
+ * assinados junto — precisam existir antes da assinatura.
+ */
+const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
+  product: [],
+  order: ["ids"],
+  other: [],
+};
+
+/** Todos os parâmetros esperados para o tipo de recurso detectado. */
+export function requiredParamsFor(kind: ResourceKind): string[] {
+  return [...SIGNATURE_PARAMS, ...ENDPOINT_PARAMS[kind]];
+}
 
 /** Idade máxima (em segundos) do timestamp antes de considerarmos a assinatura provavelmente expirada. */
 export const SIGNATURE_MAX_AGE_SECONDS = 4 * 60;
@@ -53,6 +71,8 @@ export interface ValidationResult {
   expiredWarning: { ageSeconds: number } | null;
   /** Parâmetros detectados, na ordem em que aparecem na query. */
   params: QueryParam[];
+  /** Tipo de recurso deduzido do path (decide validação e exibição). */
+  resourceKind: ResourceKind;
 }
 
 /**
@@ -119,9 +139,11 @@ export function validateSignedUrl(
 ): ValidationResult {
   const errors: ValidationIssue[] = [];
   const params = parseQueryParams(normalized.rawQuery);
+  const kind = detectResourceKind(normalized.path);
+  const required = requiredParamsFor(kind);
 
   if (normalized.pathWithQuery === "" || normalized.pathWithQuery === "/") {
-    return { errors: [{ kind: "empty" }], expiredWarning: null, params };
+    return { errors: [{ kind: "empty" }], expiredWarning: null, params, resourceKind: kind };
   }
 
   const placeholder = findPlaceholder(normalized.pathWithQuery);
@@ -131,14 +153,14 @@ export function validateSignedUrl(
 
   if (normalized.rawQuery === "") {
     errors.push({ kind: "no-query" });
-    errors.push({ kind: "missing-params", missing: [...REQUIRED_PARAMS] });
-    return { errors, expiredWarning: null, params };
+    errors.push({ kind: "missing-params", missing: required });
+    return { errors, expiredWarning: null, params, resourceKind: kind };
   }
 
   const names = new Set(params.map((p) => p.name));
-  const missing = REQUIRED_PARAMS.filter((name) => !names.has(name));
+  const missing = required.filter((name) => !names.has(name));
   if (missing.length > 0) {
-    errors.push({ kind: "missing-params", missing: [...missing] });
+    errors.push({ kind: "missing-params", missing });
   }
 
   let expiredWarning: ValidationResult["expiredWarning"] = null;
@@ -153,7 +175,7 @@ export function validateSignedUrl(
     }
   }
 
-  return { errors, expiredWarning, params };
+  return { errors, expiredWarning, params, resourceKind: kind };
 }
 
 /** Mensagem amigável para cada erro de validação. */

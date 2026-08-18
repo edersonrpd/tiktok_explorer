@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchProduct, type FetchResult } from "./lib/api";
+import { fetchResource, type FetchFailure } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
-import type { NormalizedUrl } from "./lib/signedUrl";
-import type { Product, ProductResponse } from "./types/tiktok";
+import { detectResourceKind, type ResourceKind } from "./lib/endpoint";
+import { parseQueryParams, type NormalizedUrl } from "./lib/signedUrl";
+import type { Order, OrderListData, Product, TikTokApiResponse } from "./types/tiktok";
 import { EndpointBuilder } from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
 import { ErrorDisplay } from "./components/ErrorDisplay";
@@ -12,6 +13,7 @@ import { SkuTable } from "./components/SkuTable";
 import { DescriptionCard } from "./components/DescriptionCard";
 import { AttributesCard, PackageCard } from "./components/AttributesCard";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
+import { OrderView } from "./components/OrderView";
 import { RawJson } from "./components/RawJson";
 import { HistoryList } from "./components/HistoryList";
 import { Card } from "./components/ui";
@@ -19,20 +21,33 @@ import { Card } from "./components/ui";
 const TOKEN_STORAGE_KEY = "tiktok-product-viewer.access-token";
 const HISTORY_LIMIT = 10;
 
+/** Resultado já discriminado pelo tipo de recurso consultado. */
+export type LoadedResource =
+  | { kind: "product"; product: Product }
+  | { kind: "order"; orders: Order[]; requestedIds: string[] }
+  | { kind: "other" };
+
 export interface HistoryEntry {
   key: string;
-  productId: string;
-  title: string;
+  label: string;
+  subtitle: string;
   time: Date;
-  response: ProductResponse;
-  product: Product;
+  response: TikTokApiResponse<unknown>;
+  resource: LoadedResource;
 }
 
 type ViewState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "error"; result: Exclude<FetchResult, { kind: "ok" }> }
-  | { kind: "success"; response: ProductResponse; product: Product; historyKey: string };
+  | { kind: "error"; result: FetchFailure }
+  | { kind: "success"; response: TikTokApiResponse<unknown>; resource: LoadedResource; historyKey: string };
+
+/** Lê os `ids` pedidos na query — só para conferir o que voltou, nunca para alterar a URL. */
+function requestedOrderIds(normalized: NormalizedUrl): string[] {
+  const param = parseQueryParams(normalized.rawQuery).find((p) => p.name === "ids");
+  if (param === undefined) return [];
+  return param.value.split(",").map((id) => id.trim()).filter((id) => id !== "");
+}
 
 export default function App() {
   // O token persiste em localStorage; a URL assinada NÃO (expira em minutos).
@@ -48,28 +63,46 @@ export default function App() {
   const handleSubmit = useCallback(
     async (normalized: NormalizedUrl) => {
       setView({ kind: "loading" });
-      const result = await fetchProduct(normalized, token);
+
+      // O tipo vem do path da URL assinada, não da aba escolhida no passo 1.
+      const kind: ResourceKind = detectResourceKind(normalized.path);
+      const result = await fetchResource<unknown>(normalized, token);
 
       if (result.kind !== "ok") {
         setView({ kind: "error", result });
         return;
       }
 
+      let resource: LoadedResource;
+      let label: string;
+      let subtitle: string;
+
+      if (kind === "product") {
+        const product = result.data as Product;
+        resource = { kind: "product", product };
+        label = product.title ?? "(sem título)";
+        subtitle = `Anúncio ${product.id}`;
+      } else if (kind === "order") {
+        const orders = (result.data as OrderListData).orders ?? [];
+        resource = { kind: "order", orders, requestedIds: requestedOrderIds(normalized) };
+        label = `${orders.length} pedido(s)`;
+        subtitle = orders.map((o) => o.id).join(", ") || "nenhum retornado";
+      } else {
+        resource = { kind: "other" };
+        label = "Resposta bruta";
+        subtitle = normalized.path;
+      }
+
       const entry: HistoryEntry = {
-        key: `${result.product.id}-${Date.now()}`,
-        productId: result.product.id,
-        title: result.product.title ?? "(sem título)",
+        key: `${kind}-${Date.now()}`,
+        label,
+        subtitle,
         time: new Date(),
         response: result.response,
-        product: result.product,
+        resource,
       };
       setHistory((prev) => [entry, ...prev].slice(0, HISTORY_LIMIT));
-      setView({
-        kind: "success",
-        response: result.response,
-        product: result.product,
-        historyKey: entry.key,
-      });
+      setView({ kind: "success", response: result.response, resource, historyKey: entry.key });
     },
     [token],
   );
@@ -79,29 +112,32 @@ export default function App() {
     setView({
       kind: "success",
       response: entry.response,
-      product: entry.product,
+      resource: entry.resource,
       historyKey: entry.key,
     });
   }, []);
 
   const diagnostics = useMemo(
-    () => (view.kind === "success" ? runDiagnostics(view.product) : []),
+    () =>
+      view.kind === "success" && view.resource.kind === "product"
+        ? runDiagnostics(view.resource.product)
+        : [],
     [view],
   );
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
       <header className="border-b border-slate-200 bg-white px-6 py-3">
-        <h1 className="text-base font-bold">TikTok Product Viewer</h1>
+        <h1 className="text-base font-bold">TikTok Shop Viewer</h1>
         <p className="text-xs text-slate-500">
-          Consulta de anúncios via URL pré-assinada — a query string nunca é modificada.
+          Consulta de anúncios e pedidos via URL pré-assinada — a query string nunca é modificada.
         </p>
       </header>
 
       <main className="mx-auto grid max-w-6xl gap-4 px-4 py-4 lg:grid-cols-[380px_1fr]">
         <div className="space-y-4">
           <EndpointBuilder />
-          <Card title="2. Consultar anúncio">
+          <Card title="2. Consultar">
             <QueryForm
               token={token}
               onTokenChange={setToken}
@@ -133,16 +169,38 @@ export default function App() {
 
           {view.kind === "success" && (
             <>
-              <ProductHeader product={view.product} />
-              <DiagnosticsPanel alerts={diagnostics} />
-              <SkuTable skus={view.product.skus ?? []} />
-              <Gallery images={view.product.main_images ?? []} video={view.product.video} />
-              <DescriptionCard html={view.product.description} />
-              <AttributesCard attributes={view.product.product_attributes ?? []} />
-              <PackageCard
-                dimensions={view.product.package_dimensions}
-                weight={view.product.package_weight}
-              />
+              {view.resource.kind === "product" && (
+                <>
+                  <ProductHeader product={view.resource.product} />
+                  <DiagnosticsPanel alerts={diagnostics} />
+                  <SkuTable skus={view.resource.product.skus ?? []} />
+                  <Gallery
+                    images={view.resource.product.main_images ?? []}
+                    video={view.resource.product.video}
+                  />
+                  <DescriptionCard html={view.resource.product.description} />
+                  <AttributesCard attributes={view.resource.product.product_attributes ?? []} />
+                  <PackageCard
+                    dimensions={view.resource.product.package_dimensions}
+                    weight={view.resource.product.package_weight}
+                  />
+                </>
+              )}
+
+              {view.resource.kind === "order" && (
+                <OrderView
+                  orders={view.resource.orders}
+                  requestedIds={view.resource.requestedIds}
+                />
+              )}
+
+              {view.resource.kind === "other" && (
+                <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
+                  Endpoint sem exibição dedicada nesta aplicação — a resposta completa está no JSON
+                  bruto abaixo.
+                </div>
+              )}
+
               <RawJson response={view.response} />
             </>
           )}

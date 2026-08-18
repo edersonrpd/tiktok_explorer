@@ -109,3 +109,31 @@ describe("validateSignedUrl", () => {
     expect(result.errors).toEqual([{ kind: "empty" }]);
   });
 });
+
+describe("validateSignedUrl — pedidos", () => {
+  const ORDER_QUERY =
+    "timestamp=1787082661&shop_cipher=GCP_x&ids=57668123555,57668123556&app_key=38abcd&sign=5361";
+
+  it("aceita a URL de pedidos com ids e não trata ids como parâmetro extra", () => {
+    const normalized = normalizeSignedUrl(`/order/202507/orders?${ORDER_QUERY}`);
+    const result = validateSignedUrl(normalized, 1787082661);
+    expect(result.errors).toEqual([]);
+    expect(result.resourceKind).toBe("order");
+    expect(result.params).toHaveLength(5);
+  });
+
+  it("bloqueia URL de pedidos sem o parâmetro ids", () => {
+    const normalized = normalizeSignedUrl(
+      "/order/202507/orders?timestamp=1787082661&shop_cipher=GCP_x&app_key=38abcd&sign=5361",
+    );
+    const result = validateSignedUrl(normalized, 1787082661);
+    expect(result.errors).toEqual([{ kind: "missing-params", missing: ["ids"] }]);
+  });
+
+  it("não exige ids em URL de produto", () => {
+    const normalized = normalizeSignedUrl(`${PATH}?${SIGNED_QUERY}`);
+    const result = validateSignedUrl(normalized, 1787082661);
+    expect(result.resourceKind).toBe("product");
+    expect(result.errors).toEqual([]);
+  });
+});

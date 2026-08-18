@@ -1,23 +1,35 @@
 /**
- * Montagem do endpoint do produto a partir do código do anúncio.
+ * Montagem dos endpoints a partir dos códigos informados.
  *
  * Este é o PRIMEIRO passo do fluxo: o caminho gerado aqui é o que vai
  * para o sistema interno de assinatura, que devolve a URL assinada para
- * colar no formulário de consulta.
+ * colar no formulário de consulta. Nada aqui toca em assinatura:
+ * `sign`, `app_key`, `shop_cipher` e `timestamp` são acrescentados pelo
+ * sistema que assina.
  *
- * O path é montado por concatenação simples, sem query e sem encoding —
- * o product_id do TikTok Shop é sempre numérico, então não há nada a
- * escapar. Nada aqui toca em assinatura: `sign`, `app_key`, `shop_cipher`
- * e `timestamp` são acrescentados pelo sistema que assina.
+ * DIFERENÇA IMPORTANTE ENTRE OS DOIS ENDPOINTS:
+ * - Produto: o ID vai no PATH  → /product/202309/products/{id}
+ * - Pedidos: os IDs vão na QUERY → /order/202507/orders?ids=a,b
+ *
+ * No caso de pedidos, `ids` faz parte da query e portanto é assinado
+ * junto com os demais parâmetros. Ele precisa estar presente ANTES da
+ * assinatura — acrescentar `ids` depois invalidaria o `sign` (erro
+ * 106001). Por isso o passo 1 já entrega o caminho com `ids` embutido.
  */
 
 /** Versão do endpoint de produto da Open API (parte do path assinado). */
 export const PRODUCT_API_VERSION = "202309";
 
+/** Versão do endpoint de pedidos da Open API (parte do path assinado). */
+export const ORDER_API_VERSION = "202507";
+
+/** Tipo de recurso que a aplicação sabe consultar e exibir. */
+export type ResourceKind = "product" | "order" | "other";
+
 export type EndpointResult = { ok: true; path: string } | { ok: false; reason: string };
 
 /**
- * Extrai o ID de um valor colado. Aceita o ID puro, mas também tolera o
+ * Extrai um ID de um valor colado. Aceita o ID puro, mas também tolera o
  * caso comum de colar um path/URL inteiro: fica com o último segmento
  * antes da query, além de aspas e espaços de copiar/colar.
  */
@@ -48,4 +60,60 @@ export function buildProductEndpoint(rawId: string): EndpointResult {
   }
 
   return { ok: true, path: `/product/${PRODUCT_API_VERSION}/products/${id}` };
+}
+
+/**
+ * Separa os IDs de pedido informados. Aceita vírgula, ponto-e-vírgula,
+ * espaço ou uma linha por ID — assim dá para colar direto de uma planilha.
+ * Preserva a ordem e remove repetidos.
+ */
+export function parseOrderIds(raw: string): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+
+  for (const piece of raw.split(/[\s,;]+/)) {
+    const id = cleanProductId(piece);
+    if (id !== "" && !seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+
+  return ids;
+}
+
+/**
+ * Monta `/order/{versão}/orders?ids=a,b`.
+ *
+ * A vírgula entre os IDs fica literal, exatamente como na documentação do
+ * TikTok — não aplicamos encoding aqui, e o sistema de assinatura deve
+ * assinar a query nesse mesmo formato.
+ */
+export function buildOrderEndpoint(raw: string): EndpointResult {
+  const ids = parseOrderIds(raw);
+
+  if (ids.length === 0) {
+    return { ok: false, reason: "Informe ao menos um código de pedido (order id)." };
+  }
+
+  const invalid = ids.filter((id) => !/^\d+$/.test(id));
+  if (invalid.length > 0) {
+    return {
+      ok: false,
+      reason: `Código de pedido é composto só por números (ex.: 576461413038785752). Inválido(s): ${invalid.join(", ")}.`,
+    };
+  }
+
+  return { ok: true, path: `/order/${ORDER_API_VERSION}/orders?ids=${ids.join(",")}` };
+}
+
+/**
+ * Descobre o tipo de recurso pelo path da URL assinada, para que a
+ * validação e a exibição não dependam da aba selecionada — colar uma URL
+ * de pedido com a aba de produto aberta continua funcionando.
+ */
+export function detectResourceKind(path: string): ResourceKind {
+  if (path.startsWith("/product/")) return "product";
+  if (path.startsWith("/order/")) return "order";
+  return "other";
 }

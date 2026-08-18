@@ -1,4 +1,4 @@
-import type { Product, ProductResponse } from "../types/tiktok";
+import type { OrderListData, Product, TikTokApiResponse } from "../types/tiktok";
 import type { NormalizedUrl } from "./signedUrl";
 import { TARGET_HEADER, TOKEN_HEADER } from "./proxyTarget";
 
@@ -20,12 +20,16 @@ import { TARGET_HEADER, TOKEN_HEADER } from "./proxyTarget";
 /** Endpoint atendido pelo middleware do Vite (dev) e pela Edge Function (Vercel). */
 const PROXY_ENDPOINT = "/api/tts";
 
-export type FetchResult =
-  | { kind: "ok"; response: ProductResponse; product: Product }
-  | { kind: "api-error"; response: ProductResponse; httpStatus: number }
+/** Falhas possíveis, iguais para qualquer endpoint. */
+export type FetchFailure =
+  | { kind: "api-error"; response: TikTokApiResponse<unknown>; httpStatus: number }
   | { kind: "proxy-error"; message: string; httpStatus: number }
   | { kind: "http-error"; httpStatus: number; bodyText: string }
   | { kind: "network-error"; message: string };
+
+export type FetchResult<T> =
+  | { kind: "ok"; response: TikTokApiResponse<T>; data: T }
+  | FetchFailure;
 
 /** Formato do corpo de erro emitido pelo próprio proxy (ver proxyTarget.ts). */
 interface ProxyErrorBody {
@@ -41,10 +45,15 @@ function isProxyErrorBody(value: unknown): value is ProxyErrorBody {
   );
 }
 
-export async function fetchProduct(
+/**
+ * Executa a chamada e devolve `data` já tipado conforme o endpoint.
+ * O caminho de rede é o mesmo para produto, pedidos ou qualquer outro
+ * endpoint — só o tipo de `data` muda.
+ */
+export async function fetchResource<T>(
   normalized: NormalizedUrl,
   accessToken: string,
-): Promise<FetchResult> {
+): Promise<FetchResult<T>> {
   let httpResponse: Response;
   try {
     httpResponse = await fetch(PROXY_ENDPOINT, {
@@ -80,10 +89,26 @@ export async function fetchProduct(
     return { kind: "proxy-error", message: parsed.message, httpStatus: httpResponse.status };
   }
 
-  const response = parsed as ProductResponse;
+  const response = parsed as TikTokApiResponse<T>;
   if (response.code === 0 && response.data !== undefined) {
-    return { kind: "ok", response, product: response.data };
+    return { kind: "ok", response, data: response.data };
   }
 
   return { kind: "api-error", response, httpStatus: httpResponse.status };
+}
+
+/** GET /product/202309/products/{id} */
+export function fetchProduct(
+  normalized: NormalizedUrl,
+  accessToken: string,
+): Promise<FetchResult<Product>> {
+  return fetchResource<Product>(normalized, accessToken);
+}
+
+/** GET /order/202507/orders?ids=... */
+export function fetchOrders(
+  normalized: NormalizedUrl,
+  accessToken: string,
+): Promise<FetchResult<OrderListData>> {
+  return fetchResource<OrderListData>(normalized, accessToken);
 }
