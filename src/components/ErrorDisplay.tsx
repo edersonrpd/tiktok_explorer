@@ -1,6 +1,8 @@
 import type { FetchFailure } from "../lib/api";
 import type { ResourceKind } from "../lib/endpoint";
 import { explainErrorCode, NETWORK_ERROR_EXPLANATION } from "../lib/errorCodes";
+import { SIGNATURE_MAX_AGE_SECONDS } from "../lib/signedUrl";
+import { formatAge } from "../lib/format";
 
 /** Códigos que significam assinatura inválida. */
 const SIGNATURE_ERROR_CODES = [106001, 10008];
@@ -12,6 +14,27 @@ const SIGNATURE_ERROR_CODES = [106001, 10008];
  * anúncio continua funcionando e só o pedido falha — pista que vale
  * mostrar junto do erro.
  */
+/**
+ * O 106001 tem duas causas muito diferentes — assinatura expirada ou query
+ * divergente da que foi assinada — e a mensagem da API não distingue.
+ * Sabendo a idade da assinatura no envio, dá para descartar uma delas.
+ */
+function ageVerdictFor(code: number, signatureAge: number | null): string | null {
+  if (!SIGNATURE_ERROR_CODES.includes(code) || signatureAge === null) return null;
+
+  if (signatureAge > SIGNATURE_MAX_AGE_SECONDS) {
+    return (
+      `A assinatura tinha ${formatAge(signatureAge)} quando foi enviada, acima do limite prático ` +
+      "de ~4 min. Gere uma nova e repita antes de investigar qualquer outra causa."
+    );
+  }
+  return (
+    `A assinatura tinha apenas ${formatAge(signatureAge)} quando foi enviada, dentro do limite — ` +
+    "então NÃO é expiração. A query que chegou ao TikTok difere da que foi assinada: algum " +
+    "parâmetro foi acrescentado, removido ou alterado depois da assinatura."
+  );
+}
+
 function extraHintFor(code: number, resourceKind: ResourceKind): string | null {
   if (!SIGNATURE_ERROR_CODES.includes(code) || resourceKind !== "order") return null;
   return (
@@ -29,9 +52,12 @@ function extraHintFor(code: number, resourceKind: ResourceKind): string | null {
 export function ErrorDisplay({
   result,
   resourceKind,
+  signatureAge,
 }: {
   result: FetchFailure;
   resourceKind: ResourceKind;
+  /** Idade da assinatura no instante do envio, em segundos. */
+  signatureAge: number | null;
 }) {
   if (result.kind === "network-error") {
     return (
@@ -72,6 +98,7 @@ export function ErrorDisplay({
     <ErrorBox
       title={`${explanation.title} (code ${result.response.code}, HTTP ${result.httpStatus})`}
       action={explanation.action}
+      verdict={ageVerdictFor(result.response.code, signatureAge)}
       hint={extraHintFor(result.response.code, resourceKind)}
       original={result.response.message}
       requestId={result.response.request_id}
@@ -82,12 +109,14 @@ export function ErrorDisplay({
 function ErrorBox({
   title,
   action,
+  verdict,
   hint,
   original,
   requestId,
 }: {
   title: string;
   action: string;
+  verdict?: string | null;
   hint?: string | null;
   original?: string;
   requestId?: string;
@@ -96,6 +125,12 @@ function ErrorBox({
     <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
       <h3 className="text-sm font-semibold text-red-800">{title}</h3>
       <p className="mt-1 text-xs text-red-700">{action}</p>
+      {verdict !== undefined && verdict !== null && (
+        <p className="mt-2 rounded border border-red-300 bg-white px-2 py-1.5 text-xs text-red-900">
+          <strong>Idade da assinatura no envio: </strong>
+          {verdict}
+        </p>
+      )}
       {hint !== undefined && hint !== null && (
         <p className="mt-2 rounded border border-red-200 bg-white px-2 py-1.5 text-xs text-red-800">
           <strong>Provável causa neste endpoint: </strong>

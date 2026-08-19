@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchResource, type FetchFailure } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
 import { detectResourceKind, type ResourceKind } from "./lib/endpoint";
-import { parseQueryParams, type NormalizedUrl } from "./lib/signedUrl";
+import { parseQueryParams, signatureAgeSeconds, type NormalizedUrl } from "./lib/signedUrl";
 import type { Order, OrderListData, Product, TikTokApiResponse } from "./types/tiktok";
 import { EndpointBuilder } from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
@@ -39,7 +39,7 @@ export interface HistoryEntry {
 type ViewState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "error"; result: FetchFailure; resourceKind: ResourceKind }
+  | { kind: "error"; result: FetchFailure; resourceKind: ResourceKind; signatureAge: number | null }
   | { kind: "success"; response: TikTokApiResponse<unknown>; resource: LoadedResource; historyKey: string };
 
 /** Lê os `ids` pedidos na query — só para conferir o que voltou, nunca para alterar a URL. */
@@ -66,10 +66,12 @@ export default function App() {
 
       // O tipo vem do path da URL assinada, não da aba escolhida no passo 1.
       const kind: ResourceKind = detectResourceKind(normalized.path);
+      const age = signatureAgeSeconds(normalized);
       const result = await fetchResource<unknown>(normalized, token);
 
       if (result.kind !== "ok") {
-        setView({ kind: "error", result, resourceKind: kind });
+        // Idade medida no envio: separa "expirou" de "query diferente da assinada".
+        setView({ kind: "error", result, resourceKind: kind, signatureAge: age });
         return;
       }
 
@@ -166,7 +168,11 @@ export default function App() {
           )}
 
           {view.kind === "error" && (
-            <ErrorDisplay result={view.result} resourceKind={view.resourceKind} />
+            <ErrorDisplay
+              result={view.result}
+              resourceKind={view.resourceKind}
+              signatureAge={view.signatureAge}
+            />
           )}
 
           {view.kind === "success" && (

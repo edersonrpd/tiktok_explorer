@@ -5,6 +5,7 @@ import {
   findPlaceholder,
   normalizeSignedUrl,
   parseQueryParams,
+  signatureAgeSeconds,
   validateSignedUrl,
 } from "./signedUrl";
 
@@ -165,5 +166,17 @@ describe("separador de query codificado no path", () => {
   it("não confunde %3F legítimo dentro de um valor da query", () => {
     const ok = normalizeSignedUrl(`${PATH}?shop_cipher=a%3Fb&app_key=k&timestamp=1&sign=s`);
     expect(validateSignedUrl(ok, 1).errors).toEqual([]);
+  });
+});
+
+describe("signatureAgeSeconds", () => {
+  it("mede a idade a partir do timestamp da query", () => {
+    const n = normalizeSignedUrl(`${PATH}?${SIGNED_QUERY}`);
+    expect(signatureAgeSeconds(n, 1787082661 + 104)).toBe(104);
+  });
+
+  it("devolve null sem timestamp legível", () => {
+    expect(signatureAgeSeconds(normalizeSignedUrl(`${PATH}?sign=s`), 1)).toBeNull();
+    expect(signatureAgeSeconds(normalizeSignedUrl(`${PATH}?timestamp=abc`), 1)).toBeNull();
   });
 });

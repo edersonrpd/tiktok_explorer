@@ -231,6 +231,25 @@ export function validateSignedUrl(
   return { errors, expiredWarning, params, resourceKind: kind };
 }
 
+/**
+ * Idade da assinatura, em segundos, no instante informado. Devolve null se
+ * a URL não tiver um `timestamp` legível.
+ *
+ * Serve para desambiguar o erro 106001, que tem duas causas muito
+ * diferentes: assinatura expirada ou query divergente do que foi assinado.
+ * Sabendo a idade no momento do envio, dá para descartar a expiração.
+ */
+export function signatureAgeSeconds(
+  normalized: NormalizedUrl,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): number | null {
+  const param = parseQueryParams(normalized.rawQuery).find((p) => p.name === "timestamp");
+  if (param === undefined) return null;
+  const ts = Number(param.value);
+  if (!Number.isFinite(ts) || ts <= 0) return null;
+  return nowSeconds - ts;
+}
+
 /** Mensagem amigável para cada erro de validação. */
 export function describeIssue(issue: ValidationIssue): string {
   switch (issue.kind) {
