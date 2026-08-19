@@ -1,4 +1,5 @@
 import type { Order, OrderLineItem, OrderPayment, RecipientAddress } from "../types/tiktok";
+import { groupLineItems, totalUnits } from "../lib/orders";
 import { formatEpochBR, formatPrice } from "../lib/format";
 import { Card, CopyButton } from "./ui";
 
@@ -89,18 +90,28 @@ function OrderCard({ order }: { order: Order }) {
   );
 }
 
-/** Itens do pedido — a visão que interessa para o de-para com o ERP. */
+/**
+ * Itens do pedido — a visão que interessa para o de-para com o ERP.
+ *
+ * Cada entrada de `line_items` é UMA unidade (ver src/lib/orders.ts), então
+ * a tabela agrupa por SKU e mostra a quantidade, em vez de repetir linhas.
+ */
 function LineItemsTable({ items }: { items: OrderLineItem[] }) {
   if (items.length === 0) {
     return <p className="mt-3 text-xs text-slate-400">Pedido sem itens.</p>;
   }
 
-  const sellerSkuColumn = items.map((i) => i.seller_sku ?? "").join("\n");
+  const grouped = groupLineItems(items);
+  const units = totalUnits(items);
+  // Uma linha por SKU: é o formato usado para cruzar com o cadastro do ERP.
+  const sellerSkuColumn = grouped.map((g) => g.sellerSku ?? "").join("\n");
 
   return (
     <div className="mt-4">
       <div className="mb-1 flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-slate-700">Itens ({items.length})</h3>
+        <h3 className="text-xs font-semibold text-slate-700">
+          Itens — {grouped.length} SKU(s), {units} unidade(s)
+        </h3>
         <CopyButton text={sellerSkuColumn} label="Copiar coluna seller_sku" />
       </div>
       <div className="overflow-x-auto">
@@ -111,36 +122,52 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
               <th className="py-1.5 pr-3 font-medium">Variação</th>
               <th className="py-1.5 pr-3 font-medium">seller_sku</th>
               <th className="py-1.5 pr-3 font-medium">SKU ID</th>
-              <th className="py-1.5 pr-3 text-right font-medium">Preço</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Qtd</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Preço unit.</th>
               <th className="py-1.5 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-b border-slate-100 last:border-0">
+            {grouped.map((g) => (
+              <tr key={g.key} className="border-b border-slate-100 last:border-0">
                 <td className="max-w-[16rem] py-1.5 pr-3 text-slate-800">
-                  {item.product_name ?? "—"}
+                  {g.productName ?? "—"}
                 </td>
-                <td className="py-1.5 pr-3 text-slate-600">{item.sku_name ?? "—"}</td>
+                <td className="py-1.5 pr-3 text-slate-600">{g.skuName ?? "—"}</td>
                 <td className="select-all py-1.5 pr-3 font-mono text-slate-800">
-                  {item.seller_sku !== undefined && item.seller_sku !== "" ? (
-                    item.seller_sku
+                  {g.sellerSku !== undefined && g.sellerSku !== "" ? (
+                    g.sellerSku
                   ) : (
                     <span className="font-sans text-red-600">vazio!</span>
                   )}
                 </td>
                 <td className="select-all py-1.5 pr-3 font-mono text-slate-500">
-                  {item.sku_id ?? "—"}
+                  {g.skuId ?? "—"}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-semibold text-slate-800">
+                  {g.quantity}
                 </td>
                 <td className="py-1.5 pr-3 text-right text-slate-800">
-                  {formatPrice(item.sale_price, item.currency)}
+                  {formatPrice(g.salePrice, g.currency)}
+                  {g.priceVaries && (
+                    <span className="ml-1 text-amber-600" title="Unidades deste SKU saíram com preços diferentes">
+                      *
+                    </span>
+                  )}
                 </td>
-                <td className="py-1.5 text-slate-500">{item.display_status ?? "—"}</td>
+                <td className="py-1.5 text-slate-500">
+                  {g.statuses.length > 0 ? g.statuses.join(" / ") : "—"}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {grouped.some((g) => g.priceVaries) && (
+        <p className="mt-1 text-[11px] text-amber-700">
+          * unidades do mesmo SKU com preços diferentes — confira o JSON bruto.
+        </p>
+      )}
     </div>
   );
 }

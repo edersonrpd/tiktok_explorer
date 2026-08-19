@@ -148,9 +148,12 @@ path + query intactos.
     tabela de SKUs (com botão de copiar a coluna `seller_sku`), descrição
     sanitizada com DOMPurify, atributos, dimensões/peso.
   - *Pedidos*: um cartão por pedido com status, datas, entrega, rastreio,
-    tabela de itens (também com copiar a coluna `seller_sku`), pagamento e
-    destinatário. IDs solicitados que não voltaram na resposta são
-    sinalizados.
+    pagamento e destinatário. IDs solicitados que não voltaram na resposta
+    são sinalizados. A tabela de itens **agrupa por SKU e mostra a
+    quantidade**: cada entrada de `line_items` é uma unidade (2 camisetas
+    iguais vêm como duas entradas), então a lista crua repetiria linhas sem
+    informar quantidade. O botão copia uma linha por SKU, que é o formato
+    usado para cruzar com o cadastro do ERP.
 - **Diagnóstico de integração**: alertas automáticos de `external_product_id`
   ambíguo, `seller_sku` vazio/duplicado, estoque baixo, preços divergentes,
   EAN ausente e descrição escrita para uma única cor.
@@ -168,6 +171,7 @@ src/
   types/tiktok.ts        # tipagem completa da resposta da API
   lib/endpoint.ts        # monta os endpoints de anúncio e de pedidos
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
+  lib/orders.ts          # agrupamento dos itens do pedido por SKU
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
   lib/*.test.ts          # testes das funções puras
   lib/api.ts             # camada de chamada (fetch via proxy /api/tts)
