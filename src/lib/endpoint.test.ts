@@ -112,3 +112,20 @@ describe("limite de IDs por chamada", () => {
     expect(!result.ok && result.reason).toContain("50");
   });
 });
+
+describe("versões do endpoint de pedidos", () => {
+  it("usa a 202507 por padrão", () => {
+    const r = buildOrderEndpoint("576461413038785752");
+    expect(r.ok && r.path).toBe("/order/202507/orders?ids=576461413038785752");
+  });
+
+  it("monta a 202309 quando escolhida", () => {
+    const r = buildOrderEndpoint("576461413038785752", "202309");
+    expect(r.ok && r.path).toBe("/order/202309/orders?ids=576461413038785752");
+  });
+
+  it("reconhece as duas versões como pedido", () => {
+    expect(detectResourceKind("/order/202309/orders")).toBe("order");
+    expect(detectResourceKind("/order/202507/orders")).toBe("order");
+  });
+});

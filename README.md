@@ -9,7 +9,7 @@ Endpoints suportados:
 | Recurso | Endpoint | Onde vai o código |
 |---|---|---|
 | Anúncio | `/product/202309/products/{id}` | no path |
-| Pedidos | `/order/202507/orders?ids=a,b` | na **query** (`ids`) |
+| Pedidos | `/order/202507/orders?ids=a,b` (ou `202309`) | na **query** (`ids`) |
 
 Esta aplicação **não** calcula `sign` e **não** pede `app_secret`. O fluxo é
 sempre: colar a URL assinada + o access token → GET → resultado.
@@ -115,7 +115,10 @@ path + query intactos.
   - *Pedidos*: informe um ou vários order ids — separados por vírgula,
     espaço ou quebra de linha, para colar direto de planilha — e a
     aplicação monta `/order/202507/orders?ids=a,b`, removendo repetidos
-    e respeitando o limite de 50 IDs por chamada da documentação.
+    e respeitando o limite de 50 IDs por chamada da documentação. Há um
+    seletor de versão do endpoint (**202507** ou **202309**) — as duas
+    recebem `ids` na query e devolvem a mesma estrutura, então a escolha
+    não muda nada quanto à assinatura.
     O `ids` já sai no caminho porque **faz parte da query assinada**:
     acrescentá-lo depois da assinatura invalidaria o `sign`.
 
