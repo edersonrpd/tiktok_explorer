@@ -8,6 +8,18 @@ export interface ErrorExplanation {
   action: string;
 }
 
+const FAILED_TO_GET_ORDERS: ErrorExplanation = {
+  title: "Falha ao buscar os pedidos",
+  action:
+    "Erro transitório do lado do TikTok. Tente novamente; se repetir várias vezes, acione o suporte da plataforma com o request_id.",
+};
+
+const TIKTOK_INTERNAL_ERROR: ErrorExplanation = {
+  title: "Erro interno do TikTok",
+  action:
+    "Erro do lado da plataforma, não da sua requisição. Tente novamente; se persistir, acione o suporte com o request_id.",
+};
+
 const KNOWN_CODES: Record<number, ErrorExplanation> = {
   106001: {
     title: "Assinatura inválida",
@@ -29,6 +41,19 @@ const KNOWN_CODES: Record<number, ErrorExplanation> = {
     action:
       "O shop_cipher da URL não corresponde à loja do token. Confirme que URL e token foram gerados para a mesma loja.",
   },
+  // Códigos específicos do Get Order Detail (202507).
+  21008111: {
+    title: "Pedido não pertence a esta loja",
+    action:
+      "O pedido ou pacote informado é de outro vendedor. Confirme se o ID está correto e se o shop_cipher é o da loja dona do pedido.",
+  },
+  10002014: FAILED_TO_GET_ORDERS,
+  10002015: FAILED_TO_GET_ORDERS,
+  10037002: FAILED_TO_GET_ORDERS,
+  10037003: FAILED_TO_GET_ORDERS,
+  10037004: FAILED_TO_GET_ORDERS,
+  10006402: TIKTOK_INTERNAL_ERROR,
+  36009003: TIKTOK_INTERNAL_ERROR,
 };
 
 export function explainErrorCode(code: number): ErrorExplanation {

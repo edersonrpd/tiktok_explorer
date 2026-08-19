@@ -4,6 +4,7 @@ import {
   buildProductEndpoint,
   cleanProductId,
   detectResourceKind,
+  MAX_ORDER_IDS,
   parseOrderIds,
 } from "./endpoint";
 
@@ -93,5 +94,21 @@ describe("detectResourceKind", () => {
 
   it("classifica endpoints desconhecidos como other", () => {
     expect(detectResourceKind("/finance/202309/statements")).toBe("other");
+  });
+});
+
+describe("limite de IDs por chamada", () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => String(576461413038785752n + BigInt(i))).join(",");
+
+  it("aceita exatamente 50 pedidos", () => {
+    const result = buildOrderEndpoint(many(MAX_ORDER_IDS));
+    expect(result.ok).toBe(true);
+  });
+
+  it("recusa 51 pedidos indicando o limite", () => {
+    const result = buildOrderEndpoint(many(MAX_ORDER_IDS + 1));
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.reason).toContain("50");
   });
 });

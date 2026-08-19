@@ -114,7 +114,8 @@ path + query intactos.
     path ou URL inteiro (fica com o último segmento antes da query).
   - *Pedidos*: informe um ou vários order ids — separados por vírgula,
     espaço ou quebra de linha, para colar direto de planilha — e a
-    aplicação monta `/order/202507/orders?ids=a,b`, removendo repetidos.
+    aplicação monta `/order/202507/orders?ids=a,b`, removendo repetidos
+    e respeitando o limite de 50 IDs por chamada da documentação.
     O `ids` já sai no caminho porque **faz parte da query assinada**:
     acrescentá-lo depois da assinatura invalidaria o `sign`.
 
@@ -138,8 +139,10 @@ path + query intactos.
   conferir que são exatamente os esperados e nada a mais (4 para anúncio,
   5 para pedidos por causa do `ids`).
 - **Erros traduzidos**: `106001`/`10008` (assinatura), `36009004` (token),
-  `12000000` (`shop_cipher`) e falha de rede viram causa provável + ação,
-  sempre com o `request_id` (o que o suporte do TikTok pede).
+  `12000000` (`shop_cipher`), `21008111` (pedido de outra loja), além dos
+  transitórios do Get Order Detail (`10002014/15`, `10037002/3/4`,
+  `10006402`, `36009003`) e falha de rede — todos viram causa provável +
+  ação, sempre com o `request_id` (o que o suporte do TikTok pede).
 - **Resultado em cartões**:
   - *Anúncio*: cabeçalho, breadcrumb de categorias, galeria com vídeo,
     tabela de SKUs (com botão de copiar a coluna `seller_sku`), descrição

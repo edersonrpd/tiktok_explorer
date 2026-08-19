@@ -23,6 +23,9 @@ export const PRODUCT_API_VERSION = "202309";
 /** Versão do endpoint de pedidos da Open API (parte do path assinado). */
 export const ORDER_API_VERSION = "202507";
 
+/** Limite de IDs por chamada, conforme a documentação do Get Order Detail. */
+export const MAX_ORDER_IDS = 50;
+
 /** Tipo de recurso que a aplicação sabe consultar e exibir. */
 export type ResourceKind = "product" | "order" | "other";
 
@@ -101,6 +104,13 @@ export function buildOrderEndpoint(raw: string): EndpointResult {
     return {
       ok: false,
       reason: `Código de pedido é composto só por números (ex.: 576461413038785752). Inválido(s): ${invalid.join(", ")}.`,
+    };
+  }
+
+  if (ids.length > MAX_ORDER_IDS) {
+    return {
+      ok: false,
+      reason: `O endpoint aceita no máximo ${MAX_ORDER_IDS} pedidos por chamada (você informou ${ids.length}). Divida em lotes de até ${MAX_ORDER_IDS}.`,
     };
   }
 
