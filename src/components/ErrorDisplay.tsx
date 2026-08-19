@@ -1,11 +1,38 @@
 import type { FetchFailure } from "../lib/api";
+import type { ResourceKind } from "../lib/endpoint";
 import { explainErrorCode, NETWORK_ERROR_EXPLANATION } from "../lib/errorCodes";
+
+/** Códigos que significam assinatura inválida. */
+const SIGNATURE_ERROR_CODES = [106001, 10008];
+
+/**
+ * Endpoints com parâmetro de negócio na query (ex.: `ids` em pedidos)
+ * expõem uma falha comum do sistema que assina: ele considera apenas o
+ * path e seus próprios parâmetros, ignorando os demais. Nesse caso o
+ * anúncio continua funcionando e só o pedido falha — pista que vale
+ * mostrar junto do erro.
+ */
+function extraHintFor(code: number, resourceKind: ResourceKind): string | null {
+  if (!SIGNATURE_ERROR_CODES.includes(code) || resourceKind !== "order") return null;
+  return (
+    "Este endpoint leva ids na query, e a assinatura precisa cobrir esse parâmetro junto com " +
+    "app_key, timestamp e shop_cipher. Se a consulta de anúncio funciona e só a de pedidos falha, " +
+    "o sistema interno provavelmente assina apenas o path e os parâmetros que ele mesmo adiciona, " +
+    "ignorando os que já vinham no caminho."
+  );
+}
 
 /**
  * Erros traduzidos para causa provável + ação, nunca JSON cru.
  * O request_id sempre aparece — é o que o suporte do TikTok pede.
  */
-export function ErrorDisplay({ result }: { result: FetchFailure }) {
+export function ErrorDisplay({
+  result,
+  resourceKind,
+}: {
+  result: FetchFailure;
+  resourceKind: ResourceKind;
+}) {
   if (result.kind === "network-error") {
     return (
       <ErrorBox
@@ -45,6 +72,7 @@ export function ErrorDisplay({ result }: { result: FetchFailure }) {
     <ErrorBox
       title={`${explanation.title} (code ${result.response.code}, HTTP ${result.httpStatus})`}
       action={explanation.action}
+      hint={extraHintFor(result.response.code, resourceKind)}
       original={result.response.message}
       requestId={result.response.request_id}
     />
@@ -54,11 +82,13 @@ export function ErrorDisplay({ result }: { result: FetchFailure }) {
 function ErrorBox({
   title,
   action,
+  hint,
   original,
   requestId,
 }: {
   title: string;
   action: string;
+  hint?: string | null;
   original?: string;
   requestId?: string;
 }) {
@@ -66,6 +96,12 @@ function ErrorBox({
     <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
       <h3 className="text-sm font-semibold text-red-800">{title}</h3>
       <p className="mt-1 text-xs text-red-700">{action}</p>
+      {hint !== undefined && hint !== null && (
+        <p className="mt-2 rounded border border-red-200 bg-white px-2 py-1.5 text-xs text-red-800">
+          <strong>Provável causa neste endpoint: </strong>
+          {hint}
+        </p>
+      )}
       {original !== undefined && original !== "" && (
         <p className="mt-2 font-mono text-[11px] text-red-400">Mensagem original: {original}</p>
       )}

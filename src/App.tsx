@@ -39,7 +39,7 @@ export interface HistoryEntry {
 type ViewState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "error"; result: FetchFailure }
+  | { kind: "error"; result: FetchFailure; resourceKind: ResourceKind }
   | { kind: "success"; response: TikTokApiResponse<unknown>; resource: LoadedResource; historyKey: string };
 
 /** Lê os `ids` pedidos na query — só para conferir o que voltou, nunca para alterar a URL. */
@@ -69,7 +69,7 @@ export default function App() {
       const result = await fetchResource<unknown>(normalized, token);
 
       if (result.kind !== "ok") {
-        setView({ kind: "error", result });
+        setView({ kind: "error", result, resourceKind: kind });
         return;
       }
 
@@ -165,7 +165,9 @@ export default function App() {
             </div>
           )}
 
-          {view.kind === "error" && <ErrorDisplay result={view.result} />}
+          {view.kind === "error" && (
+            <ErrorDisplay result={view.result} resourceKind={view.resourceKind} />
+          )}
 
           {view.kind === "success" && (
             <>
