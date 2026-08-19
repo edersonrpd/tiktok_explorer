@@ -101,3 +101,26 @@ describe("proxyToTikTok", () => {
     expect(JSON.parse(outcome.body)).toMatchObject({ code: 106001, request_id: "r1" });
   });
 });
+
+describe("caracteres que o cliente HTTP reescreveria", () => {
+  it("recusa # porque truncaria a URL antes do sign", () => {
+    const result = buildTargetUrl("/order/202507/orders?a=b#c&sign=abc");
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.reason).toContain("sign");
+  });
+
+  it('recusa ", < e > (o fetch os percent-encoda)', () => {
+    expect(buildTargetUrl('/o?a="x"&sign=s').ok).toBe(false);
+    expect(buildTargetUrl("/o?a=<x>&sign=s").ok).toBe(false);
+  });
+
+  it("recusa apóstrofo, que o fetch converte em %27", () => {
+    expect(buildTargetUrl("/o?a=x'y&sign=s").ok).toBe(false);
+  });
+
+  it("aceita os caracteres que realmente aparecem numa URL assinada", () => {
+    const real =
+      "/order/202507/orders?ids=57668123555,57668123556&shop_cipher=ROW_16myjQAAAAD5rjMQ+a/b=&app_key=k&timestamp=1&sign=d8373d66";
+    expect(buildTargetUrl(real).ok).toBe(true);
+  });
+});

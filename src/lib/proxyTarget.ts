@@ -49,6 +49,21 @@ export function buildTargetUrl(rawTarget: string | null | undefined): TargetResu
       reason: `Header ${TARGET_HEADER} contém espaços ou caracteres não-ASCII — uma URL assinada válida não tem esses caracteres.`,
     };
   }
+  // O parser de URL usado pelo fetch REESCREVE estes caracteres na query
+  // (e o "#" trunca tudo a partir dele, deixando o sign de fora da
+  // requisição — falha silenciosa). Uma URL assinada do TikTok não os
+  // contém, então recusar é mais seguro do que enviar algo alterado.
+  const rewritten = [...`"#<>'`].filter((c) => rawTarget.includes(c));
+  if (rewritten.length > 0) {
+    return {
+      ok: false,
+      reason:
+        `O alvo contém ${rewritten.map((c) => `"${c}"`).join(", ")}, que o cliente HTTP reescreveria ` +
+        `antes de enviar${rewritten.includes("#") ? ' (o "#" descartaria o resto da URL, inclusive o sign)' : ""} — ` +
+        "isso invalidaria a assinatura. Confira a URL assinada.",
+    };
+  }
+
   if (!rawTarget.startsWith("/")) {
     return {
       ok: false,
