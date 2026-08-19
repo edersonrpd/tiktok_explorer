@@ -53,11 +53,14 @@ export function ErrorDisplay({
   result,
   resourceKind,
   signatureAge,
+  sentTarget,
 }: {
   result: FetchFailure;
   resourceKind: ResourceKind;
   /** Idade da assinatura no instante do envio, em segundos. */
   signatureAge: number | null;
+  /** Path + query exatamente como foram enviados ao TikTok. */
+  sentTarget: string;
 }) {
   if (result.kind === "network-error") {
     return (
@@ -102,6 +105,7 @@ export function ErrorDisplay({
       hint={extraHintFor(result.response.code, resourceKind)}
       original={result.response.message}
       requestId={result.response.request_id}
+      sentTarget={SIGNATURE_ERROR_CODES.includes(result.response.code) ? sentTarget : undefined}
     />
   );
 }
@@ -113,6 +117,7 @@ function ErrorBox({
   hint,
   original,
   requestId,
+  sentTarget,
 }: {
   title: string;
   action: string;
@@ -120,6 +125,7 @@ function ErrorBox({
   hint?: string | null;
   original?: string;
   requestId?: string;
+  sentTarget?: string;
 }) {
   return (
     <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
@@ -139,6 +145,20 @@ function ErrorBox({
       )}
       {original !== undefined && original !== "" && (
         <p className="mt-2 font-mono text-[11px] text-red-400">Mensagem original: {original}</p>
+      )}
+      {sentTarget !== undefined && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs font-medium text-red-700">
+            Ver exatamente o que foi enviado ao TikTok
+          </summary>
+          <p className="mt-1 break-all rounded border border-red-200 bg-white px-2 py-1.5 font-mono text-[11px] text-slate-700">
+            <span className="select-all">{sentTarget}</span>
+          </p>
+          <p className="mt-1 text-[11px] text-red-600">
+            É esta string, byte a byte, que precisa ter sido assinada. Compare com o que o sistema
+            interno recebeu — qualquer diferença aqui explica o 106001.
+          </p>
+        </details>
       )}
       {requestId !== undefined && requestId !== "" && (
         <p className="mt-2 select-all font-mono text-[11px] text-red-600">

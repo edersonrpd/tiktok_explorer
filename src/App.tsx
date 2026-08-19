@@ -39,7 +39,13 @@ export interface HistoryEntry {
 type ViewState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "error"; result: FetchFailure; resourceKind: ResourceKind; signatureAge: number | null }
+  | {
+      kind: "error";
+      result: FetchFailure;
+      resourceKind: ResourceKind;
+      signatureAge: number | null;
+      sentTarget: string;
+    }
   | { kind: "success"; response: TikTokApiResponse<unknown>; resource: LoadedResource; historyKey: string };
 
 /** Lê os `ids` pedidos na query — só para conferir o que voltou, nunca para alterar a URL. */
@@ -71,7 +77,13 @@ export default function App() {
 
       if (result.kind !== "ok") {
         // Idade medida no envio: separa "expirou" de "query diferente da assinada".
-        setView({ kind: "error", result, resourceKind: kind, signatureAge: age });
+        setView({
+          kind: "error",
+          result,
+          resourceKind: kind,
+          signatureAge: age,
+          sentTarget: normalized.pathWithQuery,
+        });
         return;
       }
 
@@ -172,6 +184,7 @@ export default function App() {
               result={view.result}
               resourceKind={view.resourceKind}
               signatureAge={view.signatureAge}
+              sentTarget={view.sentTarget}
             />
           )}
 
