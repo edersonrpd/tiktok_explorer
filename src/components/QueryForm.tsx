@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import {
+  decodeSeparators,
   describeIssue,
   normalizeSignedUrl,
   validateSignedUrl,
@@ -31,6 +32,7 @@ export function QueryForm({ token, onTokenChange, onSubmit, loading }: QueryForm
 
   const hasInput = url.trim() !== "";
   const blocked = validation.errors.length > 0;
+  const encodedSeparator = validation.errors.find((e) => e.kind === "encoded-separator");
   const canSubmit = hasInput && !blocked && token.trim() !== "" && !loading;
 
   return (
@@ -94,6 +96,23 @@ export function QueryForm({ token, onTokenChange, onSubmit, loading }: QueryForm
               <li key={i}>{describeIssue(issue)}</li>
             ))}
           </ul>
+          {encodedSeparator !== undefined && (
+            <div className="mt-2 border-t border-red-200 pt-2">
+              <button
+                type="button"
+                onClick={() => setUrl(decodeSeparators(url))}
+                className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+              >
+                Trocar {encodedSeparator.found} por{" "}
+                {encodedSeparator.found === "%3F" ? "?" : "&"} e testar
+              </button>
+              <p className="mt-1 text-[11px] text-red-600">
+                Só para diagnóstico: se a assinatura tiver sido calculada sobre o caminho correto e
+                apenas a URL saiu mal montada, a consulta funciona. Se voltar 106001, a assinatura
+                foi calculada sobre o caminho errado e o sistema interno precisa ser corrigido.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

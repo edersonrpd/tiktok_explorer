@@ -127,6 +127,13 @@ path + query intactos.
   substituído e parâmetros obrigatórios ausentes (`shop_cipher`, `app_key`,
   `timestamp`, `sign`); avisa (sem bloquear) quando o `timestamp` tem mais
   de 4 minutos.
+- **Separador de query codificado no path** (`%3F` no lugar de `?`, `%26`
+  no lugar de `&`): sintoma de um sistema de assinatura que codificou o
+  caminho inteiro como um único valor. Os parâmetros do endpoint ficam
+  colados no path, o TikTok não reconhece a rota e eles não entram na
+  query — logo, também não entraram no cálculo da assinatura. A aplicação
+  explica isso e oferece um botão que reconstrói a URL com os separadores
+  literais, para diagnosticar se a assinatura em si está correta.
 - **Painel de parâmetros** sempre visível com nome e valor brutos, para
   conferir que são exatamente os esperados e nada a mais (4 para anúncio,
   5 para pedidos por causa do `ids`).

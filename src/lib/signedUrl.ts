@@ -62,7 +62,8 @@ export type ValidationIssue =
   | { kind: "empty" }
   | { kind: "placeholder"; found: string }
   | { kind: "missing-params"; missing: string[] }
-  | { kind: "no-query" };
+  | { kind: "no-query" }
+  | { kind: "encoded-separator"; found: string };
 
 export interface ValidationResult {
   /** Erros que bloqueiam o envio. */
@@ -121,6 +122,50 @@ export function parseQueryParams(rawQuery: string): QueryParam[] {
   });
 }
 
+/**
+ * Detecta separador de query percent-encoded DENTRO do path (`%3F` no
+ * lugar de `?`, `%26` no lugar de `&`).
+ *
+ * Sintoma de um sistema de assinatura que tratou o caminho inteiro como
+ * um único valor a codificar. O efeito é grave e silencioso: os
+ * parâmetros de negócio (ex.: `ids`) ficam colados no path, o TikTok não
+ * reconhece a rota e esses parâmetros não entram na query — portanto
+ * também não entraram no cálculo da assinatura.
+ */
+export function findEncodedSeparator(path: string): string | null {
+  const upper = path.toUpperCase();
+  if (upper.includes("%3F")) return "%3F";
+  if (upper.includes("%26")) return "%26";
+  return null;
+}
+
+/**
+ * Reconstrói a URL trocando separadores percent-encoded por literais, para
+ * o usuário TESTAR se a assinatura foi calculada corretamente e apenas a
+ * URL saiu mal montada. Nunca é aplicado automaticamente: alterar a string
+ * assinada é justamente o que invalida o `sign`.
+ *
+ * Ao recuperar o `?` do `%3F`, ele passa a ser o separador da query — então
+ * o `?` que já existia depois dele (o que abria os parâmetros de
+ * assinatura) precisa virar `&`, senão sobraria um segundo `?` no meio da
+ * query. O `%26` só é desfeito no path; dentro da query ele pode ser a
+ * codificação legítima de um `&` no valor de um parâmetro.
+ */
+export function decodeSeparators(input: string): string {
+  const encodedIndex = input.search(/%3F/i);
+
+  if (encodedIndex === -1) {
+    const qIndex = input.indexOf("?");
+    const path = qIndex === -1 ? input : input.slice(0, qIndex);
+    const rest = qIndex === -1 ? "" : input.slice(qIndex);
+    return path.replace(/%26/gi, "&") + rest;
+  }
+
+  const path = input.slice(0, encodedIndex).replace(/%26/gi, "&");
+  const query = input.slice(encodedIndex + "%3F".length).replace(/\?/g, "&");
+  return `${path}?${query}`;
+}
+
 /** Detecta placeholder de product_id não substituído (cru ou percent-encoded). */
 export function findPlaceholder(pathWithQuery: string): string | null {
   if (pathWithQuery.includes("{product_id}")) return "{product_id}";
@@ -149,6 +194,14 @@ export function validateSignedUrl(
   const placeholder = findPlaceholder(normalized.pathWithQuery);
   if (placeholder !== null) {
     errors.push({ kind: "placeholder", found: placeholder });
+  }
+
+  // Separador codificado explica sozinho os parâmetros "ausentes" — relatar
+  // "falta ids" junto só confundiria o diagnóstico.
+  const encodedSeparator = findEncodedSeparator(normalized.path);
+  if (encodedSeparator !== null) {
+    errors.push({ kind: "encoded-separator", found: encodedSeparator });
+    return { errors, expiredWarning: null, params, resourceKind: kind };
   }
 
   if (normalized.rawQuery === "") {
@@ -189,5 +242,13 @@ export function describeIssue(issue: ValidationIssue): string {
       return `Parâmetros obrigatórios ausentes na URL: ${issue.missing.join(", ")}.`;
     case "no-query":
       return "A URL não tem query string — uma URL assinada sempre carrega shop_cipher, app_key, timestamp e sign.";
+    case "encoded-separator":
+      return (
+        `O separador da query foi codificado como ${issue.found} dentro do caminho ` +
+        `(${issue.found === "%3F" ? "?" : "&"} virou ${issue.found}). Com isso os parâmetros do endpoint ` +
+        "ficam colados no path: o TikTok não reconhece a rota e eles não entram na query — " +
+        "logo, também não entraram no cálculo da assinatura. Peça ao sistema interno para assinar " +
+        "o caminho com o separador literal."
+      );
   }
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  decodeSeparators,
+  describeIssue,
   findPlaceholder,
   normalizeSignedUrl,
   parseQueryParams,
@@ -135,5 +137,33 @@ describe("validateSignedUrl — pedidos", () => {
     const result = validateSignedUrl(normalized, 1787082661);
     expect(result.resourceKind).toBe("product");
     expect(result.errors).toEqual([]);
+  });
+});
+
+describe("separador de query codificado no path", () => {
+  const BAD =
+    "file:///order/202507/orders%3Fids=585623701352187030?shop_cipher=ROW_x&app_key=k&timestamp=1787141762&sign=d837";
+
+  it("detecta %3F no path e explica em vez de acusar ids ausente", () => {
+    const result = validateSignedUrl(normalizeSignedUrl(BAD), 1787141762);
+    expect(result.errors).toEqual([{ kind: "encoded-separator", found: "%3F" }]);
+    expect(describeIssue(result.errors[0]!)).toContain("%3F");
+  });
+
+  it("decodeSeparators devolve a URL utilizável para teste", () => {
+    const fixed = decodeSeparators(BAD);
+    // O "?" recuperado vira o separador da query e o "?" seguinte vira "&".
+    expect(fixed).toBe(
+      "file:///order/202507/orders?ids=585623701352187030&shop_cipher=ROW_x&app_key=k&timestamp=1787141762&sign=d837",
+    );
+    const result = validateSignedUrl(normalizeSignedUrl(fixed), 1787141762);
+    expect(result.errors).toEqual([]);
+    expect(result.resourceKind).toBe("order");
+    expect(result.params.map((p) => p.name)).toContain("ids");
+  });
+
+  it("não confunde %3F legítimo dentro de um valor da query", () => {
+    const ok = normalizeSignedUrl(`${PATH}?shop_cipher=a%3Fb&app_key=k&timestamp=1&sign=s`);
+    expect(validateSignedUrl(ok, 1).errors).toEqual([]);
   });
 });
