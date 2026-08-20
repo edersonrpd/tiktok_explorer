@@ -60,10 +60,17 @@ function OrderCard({ order }: { order: Order }) {
         <Field label="Atualizado em" value={formatEpochBR(order.update_time)} />
         <Field label="Total" value={formatPrice(order.payment?.total_amount, currency)} />
         <Field label="Entrega" value={order.delivery_type} />
+        <Field label="Opção de entrega" value={order.delivery_option_name} />
         <Field label="Fulfillment" value={order.fulfillment_type} />
         <Field label="Transportadora" value={order.shipping_provider} />
         <Field label="Rastreio" value={order.tracking_number} mono />
+        <Field label="Forma de pagamento" value={order.payment_method_name} />
         <Field label="Comprador" value={order.buyer_nickname ?? order.user_id} mono />
+        <Field
+          label="CPF do comprador"
+          value={order.cpf !== undefined ? `${order.cpf}${order.cpf_name !== undefined ? ` (${order.cpf_name})` : ""}` : undefined}
+          mono
+        />
         {order.cancel_reason !== undefined && (
           <Field
             label="Cancelamento"
@@ -138,7 +145,18 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
           <tbody>
             {grouped.map((g) => (
               <tr key={g.key}>
-                <td className="max-w-[16rem] t-1">{g.productName ?? "—"}</td>
+                <td className="max-w-[18rem] t-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className="item-thumb">
+                      {g.skuImage !== undefined && g.skuImage !== "" ? (
+                        <img src={g.skuImage} alt="" />
+                      ) : (
+                        <div className="item-thumb-ph" />
+                      )}
+                    </div>
+                    <span>{g.productName ?? "—"}</span>
+                  </div>
+                </td>
                 <td className="t-2">{g.skuName ?? "—"}</td>
                 <td className="select-all font-mono t-1">
                   {g.sellerSku !== undefined && g.sellerSku !== "" ? (

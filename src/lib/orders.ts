@@ -15,6 +15,7 @@ export interface GroupedLineItem {
   quantity: number;
   productName: string | undefined;
   skuName: string | undefined;
+  skuImage: string | undefined;
   sellerSku: string | undefined;
   skuId: string | undefined;
   salePrice: string | undefined;
@@ -48,6 +49,7 @@ export function groupLineItems(items: OrderLineItem[]): GroupedLineItem[] {
         quantity: 1,
         productName: item.product_name,
         skuName: item.sku_name,
+        skuImage: item.sku_image,
         sellerSku: item.seller_sku,
         skuId: item.sku_id,
         salePrice: item.sale_price,

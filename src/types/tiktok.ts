@@ -275,6 +275,11 @@ export interface Order {
   replaced_order_id?: string;
   split_or_combine_tag?: string;
   payment_method_name?: string;
+  payment_method_code?: string;
+  /** CPF do comprador — obrigatório em pedidos no Brasil. */
+  cpf?: string;
+  /** Nome completo associado ao CPF, como declarado na nota fiscal. */
+  cpf_name?: string;
   commerce_platform?: string;
   order_type?: string;
   handling_duration?: HandlingDuration;
