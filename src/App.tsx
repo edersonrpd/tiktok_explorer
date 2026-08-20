@@ -230,11 +230,13 @@ export default function App() {
                     images={view.resource.product.main_images ?? []}
                     video={view.resource.product.video}
                   />
-                  <AttributesCard attributes={view.resource.product.product_attributes ?? []} />
-                  <PackageCard
-                    dimensions={view.resource.product.package_dimensions}
-                    weight={view.resource.product.package_weight}
-                  />
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <AttributesCard attributes={view.resource.product.product_attributes ?? []} />
+                    <PackageCard
+                      dimensions={view.resource.product.package_dimensions}
+                      weight={view.resource.product.package_weight}
+                    />
+                  </div>
                   <DescriptionCard html={view.resource.product.description} />
                 </>
               )}
