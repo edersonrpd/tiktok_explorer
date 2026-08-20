@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { buildOrderEndpoint, buildProductEndpoint, parseOrderIds } from "../lib/endpoint";
+import { TIKTOK_API_HOST } from "../lib/signedUrl";
 import { Card, CopyButton } from "./ui";
 
 type BuilderTab = "product" | "order";
@@ -24,6 +25,7 @@ export function EndpointBuilder() {
   const isProduct = tab === "product";
   const result = isProduct ? productResult : orderResult;
   const typed = (isProduct ? productId : orderIds).trim() !== "";
+  const fullUrl = result.ok ? `${TIKTOK_API_HOST}${result.path}` : null;
 
   return (
     <Card title="1. Montar endpoint para assinatura">
@@ -76,19 +78,19 @@ export function EndpointBuilder() {
         </p>
       )}
 
-      {result.ok && (
+      {fullUrl !== null && (
         <div className="mt-2 flex items-center gap-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2">
           <code className="flex-1 select-all break-all font-mono text-xs text-slate-800">
-            {result.path}
+            {fullUrl}
           </code>
-          <CopyButton text={result.path} label="Copiar" />
+          <CopyButton text={fullUrl} label="Copiar" />
         </div>
       )}
 
       <p className="mt-2 text-[11px] text-slate-400">
-        Envie este caminho ao sistema interno de assinatura. Ele acrescenta shop_cipher, app_key,
+        Envie esta URL ao sistema interno de assinatura. Ele acrescenta shop_cipher, app_key,
         timestamp e sign, e devolve a URL assinada para colar no passo 2.
-        {!isProduct && " O ids já vai no caminho porque é assinado junto com os demais parâmetros."}
+        {!isProduct && " O ids já vai na query porque é assinado junto com os demais parâmetros."}
       </p>
     </Card>
   );

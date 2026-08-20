@@ -119,8 +119,9 @@ path + query intactos.
     O `ids` já sai no caminho porque **faz parte da query assinada**:
     acrescentá-lo depois da assinatura invalidaria o `sign`.
 
-  Nos dois casos há botão de copiar, e o caminho gerado é o que vai para o
-  sistema interno de assinatura.
+  Nos dois casos há botão de copiar, e a URL gerada (com o host
+  `https://open-api.tiktokglobalshop.com`) é o que vai para o sistema
+  interno de assinatura.
 - **Tipo de recurso detectado pelo path** da URL assinada, não pela aba
   escolhida: colar uma URL de pedido com a aba de anúncio aberta continua
   funcionando, e a validação passa a exigir `ids`.
