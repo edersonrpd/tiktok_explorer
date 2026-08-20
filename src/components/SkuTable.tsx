@@ -1,3 +1,4 @@
+import { Layers } from "lucide-react";
 import type { Sku } from "../types/tiktok";
 import { formatPrice } from "../lib/format";
 import { Card, CopyButton } from "./ui";
@@ -6,8 +7,8 @@ import { Card, CopyButton } from "./ui";
 export function SkuTable({ skus }: { skus: Sku[] }) {
   if (skus.length === 0) {
     return (
-      <Card title="Variações">
-        <p className="text-xs text-slate-400">Produto sem variações (skus vazio).</p>
+      <Card title="Variações" icon={<Layers />}>
+        <p className="text-xs t-4">Produto sem variações (skus vazio).</p>
       </Card>
     );
   }
@@ -16,20 +17,22 @@ export function SkuTable({ skus }: { skus: Sku[] }) {
 
   return (
     <Card
-      title={`Variações (${skus.length})`}
+      title="Variações"
+      icon={<Layers />}
+      count={skus.length}
       actions={<CopyButton text={sellerSkuColumn} label="Copiar coluna seller_sku" />}
     >
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
+        <table className="tbl text-xs">
           <thead>
-            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
-              <th className="py-1.5 pr-3 font-medium">Variação</th>
-              <th className="py-1.5 pr-3 font-medium">seller_sku</th>
-              <th className="py-1.5 pr-3 font-medium">SKU ID</th>
-              <th className="py-1.5 pr-3 font-medium">EAN</th>
-              <th className="py-1.5 pr-3 text-right font-medium">Preço</th>
-              <th className="py-1.5 pr-3 text-right font-medium">Estoque</th>
-              <th className="py-1.5 font-medium">Status</th>
+            <tr>
+              <th>Variação</th>
+              <th>seller_sku</th>
+              <th>SKU ID</th>
+              <th>EAN</th>
+              <th className="text-right">Preço</th>
+              <th className="text-right">Estoque</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -43,28 +46,24 @@ export function SkuTable({ skus }: { skus: Sku[] }) {
                 0,
               );
               return (
-                <tr key={sku.id} className="border-b border-slate-100 last:border-0">
-                  <td className="py-1.5 pr-3 text-slate-800">{variation !== "" ? variation : "—"}</td>
-                  <td className="select-all py-1.5 pr-3 font-mono text-slate-800">
+                <tr key={sku.id}>
+                  <td className="t-1">{variation !== "" ? variation : "—"}</td>
+                  <td className="select-all font-mono t-1">
                     {sku.seller_sku !== undefined && sku.seller_sku !== "" ? (
                       sku.seller_sku
                     ) : (
                       <span className="font-sans text-red-600">vazio!</span>
                     )}
                   </td>
-                  <td className="select-all py-1.5 pr-3 font-mono text-slate-500">{sku.id}</td>
-                  <td className="select-all py-1.5 pr-3 font-mono text-slate-500">
-                    {sku.identifier_code?.code ?? "—"}
-                  </td>
-                  <td className="py-1.5 pr-3 text-right text-slate-800">
+                  <td className="select-all font-mono t-3">{sku.id}</td>
+                  <td className="select-all font-mono t-3">{sku.identifier_code?.code ?? "—"}</td>
+                  <td className="text-right t-1">
                     {formatPrice(sku.price?.sale_price, sku.price?.currency)}
                   </td>
-                  <td
-                    className={`py-1.5 pr-3 text-right ${stock === 0 ? "font-semibold text-red-600" : "text-slate-800"}`}
-                  >
-                    {stock}
+                  <td className="text-right">
+                    <span className={`badge ${stock === 0 ? "pink" : "green"}`}>{stock}</span>
                   </td>
-                  <td className="py-1.5 text-slate-500">{sku.status_info?.status ?? "—"}</td>
+                  <td className="t-3">{sku.status_info?.status ?? "—"}</td>
                 </tr>
               );
             })}

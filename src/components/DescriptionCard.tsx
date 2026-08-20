@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import DOMPurify from "dompurify";
+import { FileText } from "lucide-react";
 import { Card } from "./ui";
 
 /**
@@ -14,12 +15,12 @@ export function DescriptionCard({ html }: { html: string | undefined }) {
   );
 
   return (
-    <Card title="Descrição">
+    <Card title="Descrição" icon={<FileText />}>
       {sanitized === "" ? (
-        <p className="text-xs text-slate-400">Sem descrição.</p>
+        <p className="text-xs t-4">Sem descrição.</p>
       ) : (
         <div
-          className="prose-sm max-w-none text-xs leading-relaxed text-slate-700 [&_img]:max-w-full [&_p]:mb-2"
+          className="prose-sm max-w-none text-xs leading-relaxed t-2 [&_img]:max-w-full [&_p]:mb-2"
           // Seguro: `sanitized` já passou pelo DOMPurify acima.
           dangerouslySetInnerHTML={{ __html: sanitized }}
         />

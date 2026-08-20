@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Package, Tag } from "lucide-react";
+import { Link2, Package, Tag } from "lucide-react";
 import { buildOrderEndpoint, buildProductEndpoint, parseOrderIds } from "../lib/endpoint";
 import { TIKTOK_API_HOST } from "../lib/signedUrl";
 import { Card, CopyButton } from "./ui";
@@ -29,7 +29,7 @@ export function EndpointBuilder() {
   const fullUrl = result.ok ? `${TIKTOK_API_HOST}${result.path}` : null;
 
   return (
-    <Card title="1. Montar endpoint para assinatura">
+    <Card title="1. Montar endpoint para assinatura" icon={<Link2 />}>
       <div className="tab-bar mb-3 w-full">
         <button
           type="button"

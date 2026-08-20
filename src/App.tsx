@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Music2 } from "lucide-react";
+import { Music2, Search } from "lucide-react";
 import { fetchResource, type FetchFailure } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
 import { detectResourceKind, type ResourceKind } from "./lib/endpoint";
@@ -18,6 +18,8 @@ import { OrderView } from "./components/OrderView";
 import { RawJson } from "./components/RawJson";
 import { HistoryList } from "./components/HistoryList";
 import { Card } from "./components/ui";
+import { JsonDrawer } from "./components/JsonDrawer";
+import { Toast } from "./components/Toast";
 
 const TOKEN_STORAGE_KEY = "tiktok-product-viewer.access-token";
 const HISTORY_LIMIT = 10;
@@ -66,6 +68,21 @@ export default function App() {
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   // Histórico só em memória — some ao recarregar a página, de propósito.
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+
+  const [jsonDrawerOpen, setJsonDrawerOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
+  const [showToast, setShowToast] = useState(false);
+
+  const displayToast = useCallback((msg: string) => {
+    setToastMsg(msg);
+    setShowToast(true);
+  }, []);
+
+  useEffect(() => {
+    if (!showToast) return;
+    const timer = setTimeout(() => setShowToast(false), 2000);
+    return () => clearTimeout(timer);
+  }, [showToast]);
 
   const handleSubmit = useCallback(
     async (normalized: NormalizedUrl) => {
@@ -164,7 +181,7 @@ export default function App() {
       <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[380px_1fr]">
         <div className="space-y-4">
           <EndpointBuilder />
-          <Card title="2. Consultar">
+          <Card title="2. Consultar" icon={<Search />}>
             <QueryForm
               token={token}
               onTokenChange={setToken}
@@ -205,7 +222,7 @@ export default function App() {
             <>
               {view.resource.kind === "product" && (
                 <>
-                  <ProductHeader product={view.resource.product} />
+                  <ProductHeader product={view.resource.product} onToast={displayToast} />
                   <DiagnosticsPanel alerts={diagnostics} />
                   <SkuTable skus={view.resource.product.skus ?? []} />
                   <Gallery
@@ -235,11 +252,24 @@ export default function App() {
                 </div>
               )}
 
-              <RawJson response={view.response} />
+              <RawJson response={view.response} onView={() => setJsonDrawerOpen(true)} />
             </>
           )}
         </div>
       </main>
+
+      {view.kind === "success" && (
+        <JsonDrawer
+          isOpen={jsonDrawerOpen}
+          onClose={() => setJsonDrawerOpen(false)}
+          data={view.response}
+          title="Resposta da API"
+          subtitle={view.response.code === 0 ? "OK" : `code ${view.response.code}`}
+          onToast={displayToast}
+        />
+      )}
+
+      <Toast message={toastMsg} show={showToast} />
     </div>
   );
 }

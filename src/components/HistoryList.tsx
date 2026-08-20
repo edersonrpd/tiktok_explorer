@@ -1,3 +1,4 @@
+import { History } from "lucide-react";
 import type { HistoryEntry } from "../App";
 import { Card } from "./ui";
 
@@ -15,7 +16,7 @@ export function HistoryList({
   activeId: string | null;
 }) {
   return (
-    <Card title="Histórico da sessão">
+    <Card title="Histórico da sessão" icon={<History />} count={entries.length || undefined}>
       {entries.length === 0 ? (
         <p className="text-xs t-4">Nenhuma consulta bem-sucedida ainda.</p>
       ) : (

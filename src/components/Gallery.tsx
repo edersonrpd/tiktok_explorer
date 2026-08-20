@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Images } from "lucide-react";
 import type { ImageInfo, VideoInfo } from "../types/tiktok";
 import { Card } from "./ui";
 
@@ -10,8 +11,8 @@ export function Gallery({ images, video }: { images: ImageInfo[]; video: VideoIn
 
   if (urls.length === 0 && video?.url === undefined) {
     return (
-      <Card title="Galeria">
-        <p className="text-xs text-slate-400">Produto sem imagens ou vídeo.</p>
+      <Card title="Galeria" icon={<Images />}>
+        <p className="text-xs t-4">Produto sem imagens ou vídeo.</p>
       </Card>
     );
   }
@@ -19,13 +20,17 @@ export function Gallery({ images, video }: { images: ImageInfo[]; video: VideoIn
   const selectedUrl = urls[selected] ?? urls[0];
 
   return (
-    <Card title={`Galeria (${urls.length} imagem${urls.length === 1 ? "" : "ns"}${video?.url !== undefined ? " + vídeo" : ""})`}>
+    <Card
+      title={`Galeria${video?.url !== undefined ? " + vídeo" : ""}`}
+      icon={<Images />}
+      count={urls.length}
+    >
       <div className="space-y-3">
         {selectedUrl !== undefined && (
           <img
             src={selectedUrl}
             alt="Imagem principal do produto"
-            className="max-h-72 w-full rounded border border-slate-100 object-contain"
+            className="max-h-72 w-full rounded border border-[var(--border)] object-contain"
           />
         )}
         {urls.length > 1 && (
@@ -49,7 +54,7 @@ export function Gallery({ images, video }: { images: ImageInfo[]; video: VideoIn
             src={video.url}
             poster={video.cover_url}
             controls
-            className="max-h-72 w-full rounded border border-slate-100"
+            className="max-h-72 w-full rounded border border-[var(--border)]"
           />
         )}
       </div>

@@ -2,11 +2,27 @@ import { useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 
 /** Cartão padrão do layout. */
-export function Card({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) {
+export function Card({
+  title,
+  icon,
+  count,
+  children,
+  actions,
+}: {
+  title: string;
+  icon?: ReactNode;
+  count?: number;
+  children: ReactNode;
+  actions?: ReactNode;
+}) {
   return (
     <section className="card">
       <header className="card-hd">
-        <h2 className="text-sm font-bold t-1">{title}</h2>
+        <div className="hd-left">
+          {icon !== undefined && <span className="ico">{icon}</span>}
+          <h2 className="text-sm font-bold t-1">{title}</h2>
+          {count !== undefined && <span className="count">{count}</span>}
+        </div>
         {actions}
       </header>
       <div className="card-bd">{children}</div>
