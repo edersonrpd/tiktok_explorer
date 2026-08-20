@@ -160,7 +160,7 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <header className="app-header px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+        <div className="mx-auto flex max-w-[1320px] items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="hdr-mark">
               <Music2 className="h-5 w-5" />
@@ -178,8 +178,8 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[380px_1fr]">
-        <div className="space-y-4">
+      <main className="mx-auto max-w-[1320px] space-y-4 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid gap-4 lg:grid-cols-2">
           <EndpointBuilder />
           <Card title="2. Consultar" icon={<Search />}>
             <QueryForm
@@ -189,17 +189,18 @@ export default function App() {
               loading={view.kind === "loading"}
             />
           </Card>
-          <HistoryList
-            entries={history}
-            onSelect={handleHistorySelect}
-            activeId={view.kind === "success" ? view.historyKey : null}
-          />
         </div>
+
+        <HistoryList
+          entries={history}
+          onSelect={handleHistorySelect}
+          activeId={view.kind === "success" ? view.historyKey : null}
+        />
 
         <div className="space-y-4">
           {view.kind === "idle" && (
             <div className="loading-card px-6 py-16 text-center text-sm t-4">
-              Cole a URL assinada e o access token à esquerda e clique em <strong>Consultar</strong>.
+              Cole a URL assinada e o access token acima e clique em <strong>Consultar</strong>.
             </div>
           )}
 
