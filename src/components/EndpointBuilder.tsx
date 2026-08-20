@@ -1,12 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  buildOrderEndpoint,
-  buildProductEndpoint,
-  ORDER_API_VERSION,
-  ORDER_API_VERSIONS,
-  parseOrderIds,
-  type OrderApiVersion,
-} from "../lib/endpoint";
+import { buildOrderEndpoint, buildProductEndpoint, parseOrderIds } from "../lib/endpoint";
 import { Card, CopyButton } from "./ui";
 
 type BuilderTab = "product" | "order";
@@ -23,13 +16,9 @@ export function EndpointBuilder() {
   const [tab, setTab] = useState<BuilderTab>("product");
   const [productId, setProductId] = useState("");
   const [orderIds, setOrderIds] = useState("");
-  const [orderVersion, setOrderVersion] = useState<OrderApiVersion>(ORDER_API_VERSION);
 
   const productResult = useMemo(() => buildProductEndpoint(productId), [productId]);
-  const orderResult = useMemo(
-    () => buildOrderEndpoint(orderIds, orderVersion),
-    [orderIds, orderVersion],
-  );
+  const orderResult = useMemo(() => buildOrderEndpoint(orderIds), [orderIds]);
   const parsedOrderIds = useMemo(() => parseOrderIds(orderIds), [orderIds]);
 
   const isProduct = tab === "product";
@@ -60,23 +49,9 @@ export function EndpointBuilder() {
         </>
       ) : (
         <>
-          <div className="mb-1 flex items-center justify-between">
-            <label htmlFor="order-ids" className="text-xs font-medium text-slate-600">
-              Códigos de pedido (order ids) — um ou vários
-            </label>
-            <select
-              value={orderVersion}
-              onChange={(e) => setOrderVersion(e.target.value as OrderApiVersion)}
-              aria-label="Versão do endpoint de pedidos"
-              className="rounded border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px] text-slate-600"
-            >
-              {ORDER_API_VERSIONS.map((v) => (
-                <option key={v} value={v}>
-                  v{v}
-                </option>
-              ))}
-            </select>
-          </div>
+          <label htmlFor="order-ids" className="mb-1 block text-xs font-medium text-slate-600">
+            Códigos de pedido (order ids) — um ou vários
+          </label>
           <textarea
             id="order-ids"
             value={orderIds}

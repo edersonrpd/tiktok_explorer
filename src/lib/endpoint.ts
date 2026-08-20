@@ -20,16 +20,8 @@
 /** Versão do endpoint de produto da Open API (parte do path assinado). */
 export const PRODUCT_API_VERSION = "202309";
 
-/**
- * Versões disponíveis do endpoint de pedidos. As duas recebem `ids` na
- * query e devolvem a mesma estrutura (a 202507 acrescenta campos); a
- * escolha não muda nada quanto à assinatura.
- */
-export const ORDER_API_VERSIONS = ["202507", "202309"] as const;
-export type OrderApiVersion = (typeof ORDER_API_VERSIONS)[number];
-
-/** Versão padrão do endpoint de pedidos (parte do path assinado). */
-export const ORDER_API_VERSION: OrderApiVersion = "202507";
+/** Versão do endpoint de pedidos da Open API (parte do path assinado). */
+export const ORDER_API_VERSION = "202507";
 
 /** Limite de IDs por chamada, conforme a documentação do Get Order Detail. */
 export const MAX_ORDER_IDS = 50;
@@ -100,10 +92,7 @@ export function parseOrderIds(raw: string): string[] {
  * TikTok — não aplicamos encoding aqui, e o sistema de assinatura deve
  * assinar a query nesse mesmo formato.
  */
-export function buildOrderEndpoint(
-  raw: string,
-  version: OrderApiVersion = ORDER_API_VERSION,
-): EndpointResult {
+export function buildOrderEndpoint(raw: string): EndpointResult {
   const ids = parseOrderIds(raw);
 
   if (ids.length === 0) {
@@ -125,7 +114,7 @@ export function buildOrderEndpoint(
     };
   }
 
-  return { ok: true, path: `/order/${version}/orders?ids=${ids.join(",")}` };
+  return { ok: true, path: `/order/${ORDER_API_VERSION}/orders?ids=${ids.join(",")}` };
 }
 
 /**
