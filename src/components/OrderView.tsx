@@ -190,19 +190,56 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
   );
 }
 
+/** Uma linha de valor é "zerada" quando ausente, vazia ou literalmente 0 — sem impacto na conta. */
+function isZeroOrEmpty(value: string | undefined): boolean {
+  if (value === undefined || value === "") return true;
+  const n = parseFloat(value);
+  return !isNaN(n) && n === 0;
+}
+
 function PaymentBlock({ payment }: { payment: OrderPayment | undefined }) {
   if (payment === undefined) return null;
   const c = payment.currency;
 
-  const rows: Array<[string, string | undefined]> = [
-    ["Subtotal produtos", payment.sub_total],
-    ["Frete", payment.shipping_fee],
-    ["Desconto do vendedor", payment.seller_discount],
-    ["Desconto da plataforma", payment.platform_discount],
-    ["Impostos", payment.tax],
-    ["Taxa de serviço do comprador", payment.buyer_service_fee],
-    ["Total", payment.total_amount],
+  // Mostra a conta completa (preço original → descontos → subtotal, o
+  // mesmo para o frete) para que "subtotal = total" fique óbvio quando o
+  // frete saiu zerado por desconto, em vez de parecer um erro de cálculo.
+  const productRows: Array<[string, string | undefined, boolean]> = [
+    ["Preço original dos produtos", payment.original_total_product_price, false],
+    ["Desconto do vendedor", payment.seller_discount, true],
+    ["Desconto da plataforma", payment.platform_discount, true],
   ];
+  const shippingRows: Array<[string, string | undefined, boolean]> = [
+    ["Frete original", payment.original_shipping_fee, false],
+    ["Desconto do vendedor (frete)", payment.shipping_fee_seller_discount, true],
+    ["Desconto da plataforma (frete)", payment.shipping_fee_platform_discount, true],
+    ["Desconto cofinanciado (frete)", payment.shipping_fee_cofunded_discount, true],
+  ];
+  const extraRows: Array<[string, string | undefined, boolean]> = [
+    ["Impostos sobre produtos", payment.product_tax ?? payment.tax, false],
+    ["Impostos sobre o frete", payment.shipping_fee_tax, false],
+    ["Taxa de pedido pequeno", payment.small_order_fee, false],
+    ["Taxa de entrega (retail delivery)", payment.retail_delivery_fee, false],
+    ["Taxa de serviço do comprador", payment.buyer_service_fee, false],
+    ["Taxa de manuseio", payment.handling_fee, false],
+    ["Seguro de envio", payment.shipping_insurance_fee, false],
+    ["Seguro do item", payment.item_insurance_fee, false],
+  ];
+
+  const renderDiscountRows = (rows: Array<[string, string | undefined, boolean]>) =>
+    rows
+      .filter(([, value]) => !isZeroOrEmpty(value))
+      .map(([label, value, isDiscount]) => (
+        <div key={label} className="flex items-center justify-between gap-2">
+          <dt className="t-4">{label}</dt>
+          <dd className={`font-medium ${isDiscount ? "text-[var(--green)]" : "t-1"}`}>
+            {isDiscount ? "− " : ""}
+            {formatPrice(value, c)}
+          </dd>
+        </div>
+      ));
+
+  const hasExtras = extraRows.some(([, value]) => !isZeroOrEmpty(value));
 
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--border)]">
@@ -212,20 +249,26 @@ function PaymentBlock({ payment }: { payment: OrderPayment | undefined }) {
           Pagamento
         </div>
         <dl className="space-y-1 text-xs">
-          {rows
-            .filter(([, value]) => value !== undefined && value !== "")
-            .map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between gap-2">
-                <dt className="t-4">{label}</dt>
-                <dd className={label === "Total" ? "line !inline-flex !bg-transparent !border-0 !p-0" : "font-medium t-1"}>
-                  {label === "Total" ? (
-                    <span className="ln-v amount">{formatPrice(value, c)}</span>
-                  ) : (
-                    formatPrice(value, c)
-                  )}
-                </dd>
-              </div>
-            ))}
+          {renderDiscountRows(productRows)}
+          <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] pt-1">
+            <dt className="font-semibold t-2">Subtotal produtos</dt>
+            <dd className="font-semibold t-1">{formatPrice(payment.sub_total, c)}</dd>
+          </div>
+
+          {renderDiscountRows(shippingRows)}
+          <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] pt-1">
+            <dt className="font-semibold t-2">Frete cobrado</dt>
+            <dd className="font-semibold t-1">{formatPrice(payment.shipping_fee, c)}</dd>
+          </div>
+
+          {hasExtras && renderDiscountRows(extraRows)}
+
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <dt className="t-4">Total</dt>
+            <dd className="line !inline-flex !bg-transparent !border-0 !p-0">
+              <span className="ln-v amount">{formatPrice(payment.total_amount, c)}</span>
+            </dd>
+          </div>
         </dl>
       </div>
     </div>

@@ -152,6 +152,7 @@ export interface OrderPayment {
   original_shipping_fee?: string;
   shipping_fee_seller_discount?: string;
   shipping_fee_platform_discount?: string;
+  shipping_fee_cofunded_discount?: string;
   tax?: string;
   product_tax?: string;
   shipping_fee_tax?: string;
