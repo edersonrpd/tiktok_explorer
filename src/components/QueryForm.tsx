@@ -48,7 +48,7 @@ export function QueryForm({ token, onTokenChange, onSubmit, loading }: QueryForm
           onChange={(e) => setUrl(e.target.value)}
           rows={4}
           spellCheck={false}
-          placeholder={`file:///product/202309/products/123...?shop_cipher=...&app_key=...&timestamp=...&sign=...`}
+          placeholder={`${TIKTOK_API_HOST}/product/202309/products/1736320032383141477?shop_cipher=...&app_key=...&timestamp=...&sign=...`}
           className="inp font-mono leading-relaxed"
         />
         {normalized.strippedPrefix !== null && (

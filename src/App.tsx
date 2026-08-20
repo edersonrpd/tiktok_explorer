@@ -230,12 +230,12 @@ export default function App() {
                     images={view.resource.product.main_images ?? []}
                     video={view.resource.product.video}
                   />
-                  <DescriptionCard html={view.resource.product.description} />
                   <AttributesCard attributes={view.resource.product.product_attributes ?? []} />
                   <PackageCard
                     dimensions={view.resource.product.package_dimensions}
                     weight={view.resource.product.package_weight}
                   />
+                  <DescriptionCard html={view.resource.product.description} />
                 </>
               )}
 
