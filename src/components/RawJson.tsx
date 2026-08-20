@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ChevronRight, ChevronDown, Download } from "lucide-react";
 import type { TikTokApiResponse } from "../types/tiktok";
 import { CopyButton } from "./ui";
 
@@ -18,28 +19,26 @@ export function RawJson({ response }: { response: TikTokApiResponse<unknown> }) 
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <header className="flex items-center justify-between px-4 py-2.5">
+    <section className="card">
+      <header className="card-hd">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="text-sm font-semibold text-slate-700"
+          className="flex items-center gap-1 text-sm font-bold t-1"
         >
-          {open ? "▾" : "▸"} JSON bruto
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          JSON bruto
         </button>
         <div className="flex gap-2">
           <CopyButton text={json} label="Copiar JSON" />
-          <button
-            type="button"
-            onClick={handleDownload}
-            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-          >
+          <button type="button" onClick={handleDownload} className="btn-secondary">
+            <Download className="h-3 w-3" />
             Baixar .json
           </button>
         </div>
       </header>
       {open && (
-        <pre className="max-h-96 overflow-auto border-t border-slate-100 bg-slate-50 px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-700">
+        <pre className="code-panel max-h-96 overflow-auto px-4 py-3 font-mono text-[11px] leading-relaxed text-[color:var(--code-text)]">
           {json}
         </pre>
       )}

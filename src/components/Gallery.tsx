@@ -35,8 +35,8 @@ export function Gallery({ images, video }: { images: ImageInfo[]; video: VideoIn
                 key={i}
                 type="button"
                 onClick={() => setSelected(i)}
-                className={`h-14 w-14 overflow-hidden rounded border ${
-                  i === selected ? "border-slate-800 ring-1 ring-slate-800" : "border-slate-200"
+                className={`h-14 w-14 overflow-hidden rounded border-2 transition-colors ${
+                  i === selected ? "border-[var(--accent)]" : "border-transparent hover:border-[var(--border2)]"
                 }`}
               >
                 <img src={u} alt={`Miniatura ${i + 1}`} className="h-full w-full object-cover" />

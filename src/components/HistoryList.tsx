@@ -17,20 +17,20 @@ export function HistoryList({
   return (
     <Card title="Histórico da sessão">
       {entries.length === 0 ? (
-        <p className="text-xs text-slate-400">Nenhuma consulta bem-sucedida ainda.</p>
+        <p className="text-xs t-4">Nenhuma consulta bem-sucedida ainda.</p>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-[var(--border)]">
           {entries.map((entry) => (
             <li key={entry.key}>
               <button
                 type="button"
                 onClick={() => onSelect(entry)}
-                className={`w-full py-1.5 text-left hover:bg-slate-50 ${
-                  activeId === entry.key ? "bg-slate-50" : ""
+                className={`w-full rounded px-1.5 py-1.5 text-left transition-colors hover:bg-[var(--surface2)] ${
+                  activeId === entry.key ? "bg-[var(--accent-soft)]" : ""
                 }`}
               >
-                <p className="truncate text-xs font-medium text-slate-800">{entry.label}</p>
-                <p className="truncate font-mono text-[10px] text-slate-400">
+                <p className="truncate text-xs font-bold t-1">{entry.label}</p>
+                <p className="truncate font-mono text-[10px] t-4">
                   {entry.subtitle} · {entry.time.toLocaleTimeString("pt-BR")}
                 </p>
               </button>

@@ -11,11 +11,11 @@ export function OrderView({ orders, requestedIds }: { orders: Order[]; requested
   return (
     <>
       {missing.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <h3 className="text-sm font-semibold text-amber-900">
+        <div className="alert alert-warning px-4 py-3">
+          <h3 className="text-sm font-bold text-amber-800">
             {missing.length} pedido(s) solicitado(s) não vieram na resposta
           </h3>
-          <p className="mt-1 text-xs text-amber-800">
+          <p className="mt-1 text-xs t-2">
             IDs sem retorno: <span className="font-mono">{missing.join(", ")}</span>. Normalmente
             significa ID inexistente, de outra loja, ou fora do alcance do shop_cipher usado.
           </p>

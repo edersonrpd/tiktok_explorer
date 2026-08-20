@@ -1,3 +1,4 @@
+import { AlertTriangle } from "lucide-react";
 import type { FetchFailure } from "../lib/api";
 import type { ResourceKind } from "../lib/endpoint";
 import { explainErrorCode, NETWORK_ERROR_EXPLANATION } from "../lib/errorCodes";
@@ -128,30 +129,33 @@ function ErrorBox({
   sentTarget?: string;
 }) {
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-      <h3 className="text-sm font-semibold text-red-800">{title}</h3>
-      <p className="mt-1 text-xs text-red-700">{action}</p>
+    <div className="alert alert-error px-4 py-3">
+      <h3 className="flex items-center gap-1.5 text-sm font-bold text-red-700">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        {title}
+      </h3>
+      <p className="mt-1 text-xs t-2">{action}</p>
       {verdict !== undefined && verdict !== null && (
-        <p className="mt-2 rounded border border-red-300 bg-white px-2 py-1.5 text-xs text-red-900">
+        <p className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-900">
           <strong>Idade da assinatura no envio: </strong>
           {verdict}
         </p>
       )}
       {hint !== undefined && hint !== null && (
-        <p className="mt-2 rounded border border-red-200 bg-white px-2 py-1.5 text-xs text-red-800">
+        <p className="mt-2 rounded border border-red-100 bg-red-50/60 px-2 py-1.5 text-xs text-red-800">
           <strong>Provável causa neste endpoint: </strong>
           {hint}
         </p>
       )}
       {original !== undefined && original !== "" && (
-        <p className="mt-2 font-mono text-[11px] text-red-400">Mensagem original: {original}</p>
+        <p className="mt-2 font-mono text-[11px] t-4">Mensagem original: {original}</p>
       )}
       {sentTarget !== undefined && (
         <details className="mt-2">
-          <summary className="cursor-pointer text-xs font-medium text-red-700">
+          <summary className="cursor-pointer text-xs font-bold text-red-700">
             Ver exatamente o que foi enviado ao TikTok
           </summary>
-          <p className="mt-1 break-all rounded border border-red-200 bg-white px-2 py-1.5 font-mono text-[11px] text-slate-700">
+          <p className="panel mt-1 break-all px-2 py-1.5 font-mono text-[11px] t-2">
             <span className="select-all">{sentTarget}</span>
           </p>
           <p className="mt-1 text-[11px] text-red-600">

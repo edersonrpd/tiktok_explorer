@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Music2 } from "lucide-react";
 import { fetchResource, type FetchFailure } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
 import { detectResourceKind, type ResourceKind } from "./lib/endpoint";
@@ -140,15 +141,27 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
-      <header className="border-b border-slate-200 bg-white px-6 py-3">
-        <h1 className="text-base font-bold">TikTok Shop Viewer</h1>
-        <p className="text-xs text-slate-500">
-          Consulta de anúncios e pedidos via URL pré-assinada — a query string nunca é modificada.
-        </p>
+    <div className="min-h-screen">
+      <header className="app-header px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-6xl items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="hdr-mark">
+              <Music2 className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-lg font-extrabold leading-none tracking-tight hdr-title">
+                TikTok Shop
+              </h1>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-widest hdr-sub">
+                Viewer de Anúncios &amp; Pedidos
+              </p>
+            </div>
+          </div>
+          <div className="hdr-chip hidden sm:inline-flex">open-api.tiktokglobalshop.com</div>
+        </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-4 px-4 py-4 lg:grid-cols-[380px_1fr]">
+      <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[380px_1fr]">
         <div className="space-y-4">
           <EndpointBuilder />
           <Card title="2. Consultar">
@@ -168,13 +181,13 @@ export default function App() {
 
         <div className="space-y-4">
           {view.kind === "idle" && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-sm text-slate-400">
+            <div className="loading-card px-6 py-16 text-center text-sm t-4">
               Cole a URL assinada e o access token à esquerda e clique em <strong>Consultar</strong>.
             </div>
           )}
 
           {view.kind === "loading" && (
-            <div className="rounded-lg border border-slate-200 bg-white px-6 py-16 text-center text-sm text-slate-500">
+            <div className="loading-card px-6 py-16 text-center text-sm t-3">
               <span className="inline-block animate-pulse">Consultando a API do TikTok Shop…</span>
             </div>
           )}
