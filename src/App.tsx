@@ -238,7 +238,7 @@ export default function App() {
                 <>
                   <ProductHeader product={view.resource.product} onToast={displayToast} />
                   <DiagnosticsPanel alerts={diagnostics} />
-                  <SkuTable skus={view.resource.product.skus ?? []} />
+                  <SkuTable skus={view.resource.product.skus ?? []} productId={view.resource.product.id} />
                   <Gallery
                     images={view.resource.product.main_images ?? []}
                     video={view.resource.product.video}

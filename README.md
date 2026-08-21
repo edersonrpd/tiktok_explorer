@@ -152,15 +152,17 @@ path + query intactos.
   ação, sempre com o `request_id` (o que o suporte do TikTok pede).
 - **Resultado em cartões**:
   - *Anúncio*: cabeçalho, breadcrumb de categorias, galeria com vídeo,
-    tabela de SKUs (com botão de copiar a coluna `seller_sku`), descrição
-    sanitizada com DOMPurify, atributos, dimensões/peso.
+    tabela de SKUs — com botão que copia a tabela inteira (uma linha por
+    variação, colável direto numa planilha) e botão de baixar o mesmo
+    conteúdo como `.csv` —, descrição sanitizada com DOMPurify, atributos,
+    dimensões/peso.
   - *Pedidos*: um cartão por pedido com status, datas, entrega, rastreio,
     pagamento e destinatário. IDs solicitados que não voltaram na resposta
     são sinalizados. A tabela de itens **agrupa por SKU e mostra a
     quantidade**: cada entrada de `line_items` é uma unidade (2 camisetas
     iguais vêm como duas entradas), então a lista crua repetiria linhas sem
-    informar quantidade. O botão copia uma linha por SKU, que é o formato
-    usado para cruzar com o cadastro do ERP.
+    informar quantidade. O botão copia a tabela inteira (uma linha por SKU),
+    formato usado para cruzar com o cadastro do ERP.
   - *Transações*: resumo do pedido (receita, taxas/impostos, frete e
     settlement) e uma tabela com uma linha por SKU. Clicar na linha expande
     o detalhamento de receita, frete (incluindo componentes suplementares) e
@@ -190,6 +192,7 @@ src/
   lib/errorCodes.ts      # tradução dos códigos de erro
   lib/diagnostics.ts     # verificações de inconsistência de cadastro
   lib/format.ts          # formatação (datas BR, preço, idade)
+  lib/csv.ts             # exportação de tabelas como CSV/TSV (copiar e baixar)
   components/            # interface em cartões
   App.tsx                # estado da aplicação e layout
 ```

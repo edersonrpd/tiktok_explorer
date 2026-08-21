@@ -2,6 +2,7 @@ import { CreditCard, MapPin, Package } from "lucide-react";
 import type { Order, OrderLineItem, OrderPayment, RecipientAddress } from "../types/tiktok";
 import { groupLineItems, totalUnits } from "../lib/orders";
 import { formatEpochBR, formatPrice, isZeroOrEmpty } from "../lib/format";
+import { toTsv } from "../lib/csv";
 import { Card, CopyButton } from "./ui";
 
 const DONE_STATUSES = new Set(["COMPLETED", "DELIVERED"]);
@@ -119,7 +120,19 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
   const grouped = groupLineItems(items);
   const units = totalUnits(items);
   // Uma linha por SKU: é o formato usado para cruzar com o cadastro do ERP.
-  const sellerSkuColumn = grouped.map((g) => g.sellerSku ?? "").join("\n");
+  const tableTsv = toTsv(
+    ["Produto", "Variação", "seller_sku", "SKU ID", "Qtd", "Preço unit.", "Moeda", "Status"],
+    grouped.map((g) => [
+      g.productName ?? "",
+      g.skuName ?? "",
+      g.sellerSku ?? "",
+      g.skuId ?? "",
+      String(g.quantity),
+      g.salePrice ?? "",
+      g.currency ?? "",
+      g.statuses.join(" / "),
+    ]),
+  );
 
   return (
     <div className="mt-4">
@@ -127,7 +140,7 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
         <h3 className="text-xs font-bold t-2">
           Itens — {grouped.length} SKU(s), {units} unidade(s)
         </h3>
-        <CopyButton text={sellerSkuColumn} label="Copiar coluna seller_sku" />
+        <CopyButton text={tableTsv} label="Copiar tabela" />
       </div>
       <div className="overflow-x-auto">
         <table className="tbl text-xs">
