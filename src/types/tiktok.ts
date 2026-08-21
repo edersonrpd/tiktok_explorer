@@ -295,3 +295,78 @@ export interface OrderListData {
 }
 
 export type OrderResponse = TikTokApiResponse<OrderListData>;
+
+/* ------------------------------------------------------------------------ */
+/* Transações por pedido — GET /finance/202501/orders/{id}/statement_transactions */
+/* ------------------------------------------------------------------------ */
+
+export interface RevenueBreakdown {
+  subtotal_before_discount_amount?: string;
+  seller_discount_amount?: string;
+  refund_subtotal_before_discount_amount?: string;
+  seller_discount_refund_amount?: string;
+  cod_service_fee_amount?: string;
+  refund_cod_service_fee_amount?: string;
+  distant_item_fee_amount?: string;
+}
+
+export interface ShippingCostBreakdown {
+  actual_shipping_fee_amount?: string;
+  shipping_fee_discount_amount?: string;
+  customer_paid_shipping_fee_amount?: string;
+  return_shipping_fee_amount?: string;
+  replacement_shipping_fee_amount?: string;
+  exchange_shipping_fee_amount?: string;
+  signature_confirmation_fee_amount?: string;
+  shipping_insurance_fee_amount?: string;
+  fbt_fulfillment_fee_reimbursement_amount?: string;
+  return_shipping_label_fee_amount?: string;
+  seller_self_shipping_service_fee_amount?: string;
+  return_shipping_fee_paid_buyer_amount?: string;
+  failed_delivery_subsidy_amount?: string;
+  fbt_free_shipping_fee_amount?: string;
+  free_return_subsidy_amount?: string;
+  distant_shipping_fee_amount?: string;
+  shipping_app_service_fee_amount?: string;
+  logistics_service_fee?: string;
+  fbt_overall_merchant_subsidy?: string;
+  fbt_key_merchant_subsidy?: string;
+  tiktok_shop_shipping_incentive_amount?: string;
+  /** Custos suplementares que não contribuem diretamente para shipping_cost_amount. */
+  supplementary_component?: Record<string, string>;
+}
+
+/** Dezenas de fees e taxas específicas de mercado — ver documentação para o significado de cada uma. */
+export interface FeeTaxBreakdown {
+  fee?: Record<string, string>;
+  tax?: Record<string, string>;
+}
+
+export interface SkuTransaction {
+  sku_id?: string;
+  sku_name?: string;
+  statement_id?: string;
+  product_name?: string;
+  quantity?: string;
+  settlement_amount?: string;
+  revenue_amount?: string;
+  revenue_breakdown?: RevenueBreakdown;
+  shipping_cost_amount?: string;
+  shipping_cost_breakdown?: ShippingCostBreakdown;
+  fee_tax_amount?: string;
+  fee_tax_breakdown?: FeeTaxBreakdown;
+}
+
+export interface TransactionsByOrderData {
+  order_id: string;
+  order_create_time?: number;
+  currency?: string;
+  revenue_amount?: string;
+  fee_and_tax_amount?: string;
+  shipping_cost_amount?: string;
+  settlement_amount?: string;
+  sku_transactions?: SkuTransaction[];
+  total_count?: number;
+}
+
+export type TransactionsByOrderResponse = TikTokApiResponse<TransactionsByOrderData>;

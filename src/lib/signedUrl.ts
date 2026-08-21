@@ -30,6 +30,7 @@ export const SIGNATURE_PARAMS = ["shop_cipher", "app_key", "timestamp", "sign"] 
 const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
   order: ["ids"],
+  transaction: [],
   other: [],
 };
 

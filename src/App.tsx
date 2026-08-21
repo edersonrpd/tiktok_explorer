@@ -4,7 +4,13 @@ import { fetchResource, type FetchFailure } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
 import { detectResourceKind, type ResourceKind } from "./lib/endpoint";
 import { parseQueryParams, signatureAgeSeconds, type NormalizedUrl } from "./lib/signedUrl";
-import type { Order, OrderListData, Product, TikTokApiResponse } from "./types/tiktok";
+import type {
+  Order,
+  OrderListData,
+  Product,
+  TikTokApiResponse,
+  TransactionsByOrderData,
+} from "./types/tiktok";
 import { EndpointBuilder } from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
 import { ErrorDisplay } from "./components/ErrorDisplay";
@@ -15,6 +21,7 @@ import { DescriptionCard } from "./components/DescriptionCard";
 import { AttributesCard, PackageCard } from "./components/AttributesCard";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { OrderView } from "./components/OrderView";
+import { TransactionView } from "./components/TransactionView";
 import { RawJson } from "./components/RawJson";
 import { HistoryList } from "./components/HistoryList";
 import { Card } from "./components/ui";
@@ -28,6 +35,7 @@ const HISTORY_LIMIT = 10;
 export type LoadedResource =
   | { kind: "product"; product: Product }
   | { kind: "order"; orders: Order[]; requestedIds: string[] }
+  | { kind: "transaction"; data: TransactionsByOrderData }
   | { kind: "other" };
 
 export interface HistoryEntry {
@@ -119,6 +127,11 @@ export default function App() {
         resource = { kind: "order", orders, requestedIds: requestedOrderIds(normalized) };
         label = `${orders.length} pedido(s)`;
         subtitle = orders.map((o) => o.id).join(", ") || "nenhum retornado";
+      } else if (kind === "transaction") {
+        const data = result.data as TransactionsByOrderData;
+        resource = { kind: "transaction", data };
+        label = `Transações do pedido ${data.order_id}`;
+        subtitle = `${data.sku_transactions?.length ?? 0} SKU(s) · settlement ${data.settlement_amount ?? "—"} ${data.currency ?? ""}`.trim();
       } else {
         resource = { kind: "other" };
         label = "Resposta bruta";
@@ -246,6 +259,10 @@ export default function App() {
                   orders={view.resource.orders}
                   requestedIds={view.resource.requestedIds}
                 />
+              )}
+
+              {view.resource.kind === "transaction" && (
+                <TransactionView data={view.resource.data} />
               )}
 
               {view.resource.kind === "other" && (

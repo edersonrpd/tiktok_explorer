@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOrderEndpoint,
   buildProductEndpoint,
+  buildTransactionEndpoint,
   cleanProductId,
   detectResourceKind,
   MAX_ORDER_IDS,
@@ -86,14 +87,41 @@ describe("buildOrderEndpoint", () => {
   });
 });
 
+describe("buildTransactionEndpoint", () => {
+  it("monta o endpoint a partir do código do pedido", () => {
+    expect(buildTransactionEndpoint("5793990727963214852")).toEqual({
+      ok: true,
+      path: "/finance/202501/orders/5793990727963214852/statement_transactions",
+    });
+  });
+
+  it("ignora espaços em volta do código", () => {
+    const result = buildTransactionEndpoint("  5793990727963214852 \n");
+    expect(result.ok && result.path).toBe(
+      "/finance/202501/orders/5793990727963214852/statement_transactions",
+    );
+  });
+
+  it("recusa código vazio", () => {
+    expect(buildTransactionEndpoint("   ").ok).toBe(false);
+  });
+
+  it("recusa código com letras ou símbolos", () => {
+    expect(buildTransactionEndpoint("579399abc").ok).toBe(false);
+  });
+});
+
 describe("detectResourceKind", () => {
-  it("reconhece produto e pedido pelo path", () => {
+  it("reconhece produto, pedido e transações pelo path", () => {
     expect(detectResourceKind("/product/202309/products/1")).toBe("product");
     expect(detectResourceKind("/order/202507/orders")).toBe("order");
+    expect(
+      detectResourceKind("/finance/202501/orders/5793990727963214852/statement_transactions"),
+    ).toBe("transaction");
   });
 
   it("classifica endpoints desconhecidos como other", () => {
-    expect(detectResourceKind("/finance/202309/statements")).toBe("other");
+    expect(detectResourceKind("/something/202309/else")).toBe("other");
   });
 });
 

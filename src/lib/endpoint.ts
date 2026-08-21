@@ -23,11 +23,14 @@ export const PRODUCT_API_VERSION = "202309";
 /** Versão do endpoint de pedidos da Open API (parte do path assinado). */
 export const ORDER_API_VERSION = "202507";
 
+/** Versão do endpoint de transações por pedido da Open API (parte do path assinado). */
+export const TRANSACTION_API_VERSION = "202501";
+
 /** Limite de IDs por chamada, conforme a documentação do Get Order Detail. */
 export const MAX_ORDER_IDS = 50;
 
 /** Tipo de recurso que a aplicação sabe consultar e exibir. */
-export type ResourceKind = "product" | "order" | "other";
+export type ResourceKind = "product" | "order" | "transaction" | "other";
 
 export type EndpointResult = { ok: true; path: string } | { ok: false; reason: string };
 
@@ -117,6 +120,26 @@ export function buildOrderEndpoint(raw: string): EndpointResult {
   return { ok: true, path: `/order/${ORDER_API_VERSION}/orders?ids=${ids.join(",")}` };
 }
 
+/** Monta `/finance/{versão}/orders/{order_id}/statement_transactions`. */
+export function buildTransactionEndpoint(rawId: string): EndpointResult {
+  const id = cleanProductId(rawId);
+
+  if (id === "") {
+    return { ok: false, reason: "Informe o código do pedido (order_id)." };
+  }
+  if (!/^\d+$/.test(id)) {
+    return {
+      ok: false,
+      reason: `O código do pedido é composto só por números (ex.: 5793990727963214852). Valor lido: "${id}".`,
+    };
+  }
+
+  return {
+    ok: true,
+    path: `/finance/${TRANSACTION_API_VERSION}/orders/${id}/statement_transactions`,
+  };
+}
+
 /**
  * Descobre o tipo de recurso pelo path da URL assinada, para que a
  * validação e a exibição não dependam da aba selecionada — colar uma URL
@@ -125,5 +148,6 @@ export function buildOrderEndpoint(raw: string): EndpointResult {
 export function detectResourceKind(path: string): ResourceKind {
   if (path.startsWith("/product/")) return "product";
   if (path.startsWith("/order/")) return "order";
+  if (path.startsWith("/finance/")) return "transaction";
   return "other";
 }

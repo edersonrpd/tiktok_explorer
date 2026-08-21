@@ -1,8 +1,9 @@
 # tiktok-product-viewer
 
-Aplicação web (React + Vite + TypeScript) para consultar **anúncios e
-pedidos** da API do TikTok Shop a partir de uma **URL já assinada** por um
-sistema interno, exibindo o resultado de forma legível.
+Aplicação web (React + Vite + TypeScript) para consultar **anúncios,
+pedidos e transações financeiras por pedido** da API do TikTok Shop a
+partir de uma **URL já assinada** por um sistema interno, exibindo o
+resultado de forma legível.
 
 Endpoints suportados:
 
@@ -10,6 +11,7 @@ Endpoints suportados:
 |---|---|---|
 | Anúncio | `/product/202309/products/{id}` | no path |
 | Pedidos | `/order/202507/orders?ids=a,b` | na **query** (`ids`) |
+| Transações do pedido | `/finance/202501/orders/{order_id}/statement_transactions` | no path |
 
 Esta aplicação **não** calcula `sign` e **não** pede `app_secret`. O fluxo é
 sempre: colar a URL assinada + o access token → GET → resultado.
@@ -108,7 +110,8 @@ path + query intactos.
 
 ## Funcionalidades
 
-- **Montador de endpoint (passo 1)**, com abas para anúncio e pedidos:
+- **Montador de endpoint (passo 1)**, com abas para anúncio, pedidos e
+  transações:
   - *Anúncio*: informe o `product_id` e a aplicação monta
     `/product/202309/products/<id>`. Aceita o ID puro e tolera colar um
     path ou URL inteiro (fica com o último segmento antes da query).
@@ -118,8 +121,11 @@ path + query intactos.
     e respeitando o limite de 50 IDs por chamada da documentação.
     O `ids` já sai no caminho porque **faz parte da query assinada**:
     acrescentá-lo depois da assinatura invalidaria o `sign`.
+  - *Transações*: informe o `order_id` de **um único** pedido e a
+    aplicação monta `/finance/202501/orders/<id>/statement_transactions`.
+    O ID vai no path, como no anúncio — sem parâmetro extra na query.
 
-  Nos dois casos há botão de copiar, e a URL gerada (com o host
+  Em todos os casos há botão de copiar, e a URL gerada (com o host
   `https://open-api.tiktokglobalshop.com`) é o que vai para o sistema
   interno de assinatura.
 - **Tipo de recurso detectado pelo path** da URL assinada, não pela aba
@@ -137,8 +143,8 @@ path + query intactos.
   explica isso e oferece um botão que reconstrói a URL com os separadores
   literais, para diagnosticar se a assinatura em si está correta.
 - **Painel de parâmetros** sempre visível com nome e valor brutos, para
-  conferir que são exatamente os esperados e nada a mais (4 para anúncio,
-  5 para pedidos por causa do `ids`).
+  conferir que são exatamente os esperados e nada a mais (4 para anúncio e
+  para transações, 5 para pedidos por causa do `ids`).
 - **Erros traduzidos**: `106001`/`10008` (assinatura), `36009004` (token),
   `12000000` (`shop_cipher`), `21008111` (pedido de outra loja), além dos
   transitórios do Get Order Detail (`10002014/15`, `10037002/3/4`,
@@ -155,6 +161,10 @@ path + query intactos.
     iguais vêm como duas entradas), então a lista crua repetiria linhas sem
     informar quantidade. O botão copia uma linha por SKU, que é o formato
     usado para cruzar com o cadastro do ERP.
+  - *Transações*: resumo do pedido (receita, taxas/impostos, frete e
+    settlement) e uma tabela com uma linha por SKU. O detalhamento completo
+    de cada breakdown (dezenas de campos de fee/tax por mercado) fica só no
+    JSON bruto — a tabela mostra os totais que interessam no dia a dia.
 - **Diagnóstico de integração**: alertas automáticos de `external_product_id`
   ambíguo, `seller_sku` vazio/duplicado, estoque baixo, preços divergentes,
   EAN ausente e descrição escrita para uma única cor.
@@ -170,7 +180,7 @@ api/
   tts.ts                 # proxy de produção (Vercel Edge Function)
 src/
   types/tiktok.ts        # tipagem completa da resposta da API
-  lib/endpoint.ts        # monta os endpoints de anúncio e de pedidos
+  lib/endpoint.ts        # monta os endpoints de anúncio, pedidos e transações
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
   lib/orders.ts          # agrupamento dos itens do pedido por SKU
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
