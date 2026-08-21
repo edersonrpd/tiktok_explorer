@@ -103,7 +103,7 @@ html { font-size: 16px; }
 .hdr-title { color: var(--hdr-ink); }
 .hdr-sub   { color: var(--hdr-ink-2); }
 .hdr-chip {
-  display: inline-flex; align-items: center; gap: .5rem;
+  display: none; align-items: center; gap: .5rem;
   padding: .35rem .75rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, .07);
@@ -111,6 +111,12 @@ html { font-size: 16px; }
   font-size: .6875rem; font-weight: 700;
   color: var(--hdr-ink-2);
   white-space: nowrap;
+}
+/* Tailwind's `hidden sm:inline-flex` utilities can't win against this
+   unlayered rule's own `display` (equal specificity, later in cascade),
+   so the breakpoint is expressed here instead of in the className. */
+@media (min-width: 640px) {
+  .hdr-chip { display: inline-flex; }
 }
 
 /* ─── Cards ──────────────────────────────────────────────── */
@@ -278,6 +284,34 @@ html { font-size: 16px; }
 .t-2 { color: var(--text2); }
 .t-3 { color: var(--text3); }
 .t-4 { color: var(--muted); }
+
+/* ─── HTML de descrição sanitizada (DOMPurify) ──────────────
+   Sem plugin de tipografia no Tailwind — as tags do HTML vindo
+   da API (parágrafo, lista, título, imagem) ficam com o reset
+   do Tailwind (sem marcador, sem espaçamento) se não receberem
+   estilo próprio aqui. */
+.desc-html { font-size: 12.5px; line-height: 1.7; color: var(--text2); }
+.desc-html > *:first-child { margin-top: 0; }
+.desc-html > *:last-child { margin-bottom: 0; }
+.desc-html p { margin: 0 0 10px; }
+.desc-html strong, .desc-html b { font-weight: 700; color: var(--text); }
+.desc-html a { color: var(--accent-2); text-decoration: underline; text-underline-offset: 2px; }
+.desc-html ul, .desc-html ol { margin: 0 0 10px; padding-left: 1.25em; }
+.desc-html ul { list-style: disc; }
+.desc-html ol { list-style: decimal; }
+.desc-html li { margin: 2px 0; }
+.desc-html li > ul, .desc-html li > ol { margin: 4px 0 0; }
+.desc-html h1, .desc-html h2, .desc-html h3, .desc-html h4, .desc-html h5, .desc-html h6 {
+  font-weight: 800; color: var(--text); line-height: 1.35; margin: 14px 0 6px;
+}
+.desc-html h1 { font-size: 15px; }
+.desc-html h2 { font-size: 14px; }
+.desc-html h3, .desc-html h4, .desc-html h5, .desc-html h6 { font-size: 13px; }
+.desc-html img { max-width: 100%; height: auto; border-radius: var(--radius-sm); margin: 8px 0; display: block; }
+.desc-html hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.desc-html blockquote { border-left: 3px solid var(--border2); padding-left: 10px; margin: 0 0 10px; color: var(--text3); }
+.desc-html table { width: 100%; border-collapse: collapse; margin: 0 0 10px; }
+.desc-html td, .desc-html th { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
 
 /* ─── Chip / botão pequeno ───────────────────────────────── */
 .chip {

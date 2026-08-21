@@ -20,7 +20,7 @@ export function DescriptionCard({ html }: { html: string | undefined }) {
         <p className="text-xs t-4">Sem descrição.</p>
       ) : (
         <div
-          className="prose-sm max-w-none text-xs leading-relaxed t-2 [&_img]:max-w-full [&_p]:mb-2"
+          className="desc-html"
           // Seguro: `sanitized` já passou pelo DOMPurify acima.
           dangerouslySetInnerHTML={{ __html: sanitized }}
         />

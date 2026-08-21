@@ -187,12 +187,12 @@ export default function App() {
               </p>
             </div>
           </div>
-          <div className="hdr-chip hidden sm:inline-flex">open-api.tiktokglobalshop.com</div>
+          <div className="hdr-chip">open-api.tiktokglobalshop.com</div>
         </div>
       </header>
 
       <main className="mx-auto max-w-[1320px] space-y-4 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
           <EndpointBuilder />
           <Card title="2. Consultar" icon={<Search />}>
             <QueryForm
