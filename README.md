@@ -162,9 +162,10 @@ path + query intactos.
     informar quantidade. O botão copia uma linha por SKU, que é o formato
     usado para cruzar com o cadastro do ERP.
   - *Transações*: resumo do pedido (receita, taxas/impostos, frete e
-    settlement) e uma tabela com uma linha por SKU. O detalhamento completo
-    de cada breakdown (dezenas de campos de fee/tax por mercado) fica só no
-    JSON bruto — a tabela mostra os totais que interessam no dia a dia.
+    settlement) e uma tabela com uma linha por SKU. Clicar na linha expande
+    o detalhamento de receita, frete (incluindo componentes suplementares) e
+    taxas/impostos daquele SKU, escondendo os componentes zerados — só os
+    valores que efetivamente impactaram o settlement aparecem.
 - **Diagnóstico de integração**: alertas automáticos de `external_product_id`
   ambíguo, `seller_sku` vazio/duplicado, estoque baixo, preços divergentes,
   EAN ausente e descrição escrita para uma única cor.

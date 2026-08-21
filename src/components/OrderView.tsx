@@ -1,7 +1,7 @@
 import { CreditCard, MapPin, Package } from "lucide-react";
 import type { Order, OrderLineItem, OrderPayment, RecipientAddress } from "../types/tiktok";
 import { groupLineItems, totalUnits } from "../lib/orders";
-import { formatEpochBR, formatPrice } from "../lib/format";
+import { formatEpochBR, formatPrice, isZeroOrEmpty } from "../lib/format";
 import { Card, CopyButton } from "./ui";
 
 const DONE_STATUSES = new Set(["COMPLETED", "DELIVERED"]);
@@ -188,13 +188,6 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
       )}
     </div>
   );
-}
-
-/** Uma linha de valor é "zerada" quando ausente, vazia ou literalmente 0 — sem impacto na conta. */
-function isZeroOrEmpty(value: string | undefined): boolean {
-  if (value === undefined || value === "") return true;
-  const n = parseFloat(value);
-  return !isNaN(n) && n === 0;
 }
 
 function PaymentBlock({ payment }: { payment: OrderPayment | undefined }) {
