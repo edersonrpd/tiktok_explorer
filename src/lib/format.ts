@@ -22,6 +22,8 @@ export function formatAge(ageSeconds: number): string {
   const minutes = Math.floor(ageSeconds / 60);
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
+  // Prazo de pedido chega a dias; "205h" não se lê de relance.
+  if (hours >= 48) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
   return `${hours}h ${minutes % 60}min`;
 }
 
@@ -36,4 +38,19 @@ export function isZeroOrEmpty(value: string | undefined): boolean {
 export function prettyFieldLabel(key: string): string {
   const cleaned = key.replace(/_amount$/, "").replace(/_/g, " ");
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/**
+ * Prazo (SLA) do pedido: data formatada mais quanto falta ou há quanto
+ * tempo venceu. É o que decide se o pedido precisa sair hoje.
+ */
+export function deadlineHint(
+  epochSeconds: number | undefined,
+  now: number = Date.now(),
+): { label: string; overdue: boolean } | undefined {
+  if (epochSeconds === undefined || epochSeconds <= 0) return undefined;
+
+  const diffSeconds = Math.round((epochSeconds * 1000 - now) / 1000);
+  if (diffSeconds >= 0) return { label: `faltam ${formatAge(diffSeconds)}`, overdue: false };
+  return { label: `vencido há ${formatAge(-diffSeconds)}`, overdue: true };
 }

@@ -1,7 +1,9 @@
-import { CreditCard, MapPin, Package } from "lucide-react";
-import type { Order, OrderLineItem, OrderPayment, RecipientAddress } from "../types/tiktok";
+import { Clock, FileText, MapPin, Package } from "lucide-react";
+import type { Order, OrderLineItem, RecipientAddress } from "../types/tiktok";
 import { groupLineItems, totalUnits } from "../lib/orders";
-import { formatEpochBR, formatPrice, isZeroOrEmpty } from "../lib/format";
+import { deadlineHint, formatEpochBR, formatPrice } from "../lib/format";
+import { formatMoney, isZero } from "../lib/money";
+import { PaymentStatement } from "./PaymentStatement";
 import { Card, CopyButton } from "./ui";
 
 const DONE_STATUSES = new Set(["COMPLETED", "DELIVERED"]);
@@ -79,6 +81,8 @@ function OrderCard({ order }: { order: Order }) {
         )}
       </dl>
 
+      <Flags order={order} />
+
       {(order.buyer_message ?? order.seller_note) !== undefined && (
         <div className="mt-3 space-y-1 text-xs">
           {order.buyer_message !== undefined && order.buyer_message !== "" && (
@@ -96,12 +100,45 @@ function OrderCard({ order }: { order: Order }) {
         </div>
       )}
 
-      <LineItemsTable items={items} />
+      <LineItemsTable items={items} currency={currency} />
+
+      <div className="mt-4">
+        <PaymentStatement order={order} />
+      </div>
+
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <PaymentBlock payment={order.payment} />
         <RecipientBlock address={order.recipient_address} />
+        <div className="space-y-4">
+          <FiscalBlock order={order} />
+          <DeadlinesBlock order={order} />
+        </div>
       </div>
     </Card>
+  );
+}
+
+/** Marcadores que mudam o tratamento do pedido e são fáceis de perder no JSON. */
+function Flags({ order }: { order: Order }) {
+  const flags: string[] = [];
+  if (order.is_cod === true) flags.push("pagamento na entrega");
+  if (order.is_sample_order === true) flags.push("pedido amostra");
+  if (order.is_on_hold_order === true) flags.push("retido (on hold)");
+  if (order.is_replacement_order === true) flags.push("reposição");
+  if (order.is_buyer_request_cancel === true) flags.push("comprador pediu cancelamento");
+  if (order.has_updated_recipient_address === true) flags.push("endereço alterado pelo comprador");
+  if (order.split_or_combine_tag !== undefined && order.split_or_combine_tag !== "") {
+    flags.push(order.split_or_combine_tag.toLowerCase());
+  }
+  if (flags.length === 0) return null;
+
+  return (
+    <div className="badges">
+      {flags.map((flag) => (
+        <span key={flag} className="badge amber">
+          {flag}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -110,8 +147,12 @@ function OrderCard({ order }: { order: Order }) {
  *
  * Cada entrada de `line_items` é UMA unidade (ver src/lib/orders.ts), então
  * a tabela agrupa por SKU e mostra a quantidade, em vez de repetir linhas.
+ * As colunas de preço mostram a conta do item: preço cheio, o desconto de
+ * cada lado e o que o comprador pagou por aquele SKU. As duas colunas de
+ * desconto só aparecem quando algum item teve desconto — senão seriam duas
+ * colunas de travessão.
  */
-function LineItemsTable({ items }: { items: OrderLineItem[] }) {
+function LineItemsTable({ items, currency }: { items: OrderLineItem[]; currency: string | undefined }) {
   if (items.length === 0) {
     return <p className="mt-3 text-xs t-4">Pedido sem itens.</p>;
   }
@@ -120,6 +161,9 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
   const units = totalUnits(items);
   // Uma linha por SKU: é o formato usado para cruzar com o cadastro do ERP.
   const sellerSkuColumn = grouped.map((g) => g.sellerSku ?? "").join("\n");
+  const anyDiscount = grouped.some(
+    (g) => !isZero(g.sellerDiscountTotal) || !isZero(g.platformDiscountTotal),
+  );
 
   return (
     <div className="mt-4">
@@ -138,7 +182,14 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
               <th>seller_sku</th>
               <th>SKU ID</th>
               <th className="text-right">Qtd</th>
-              <th className="text-right">Preço unit.</th>
+              <th className="text-right">Preço cheio</th>
+              {anyDiscount && (
+                <>
+                  <th className="text-right">Desc. vendedor</th>
+                  <th className="text-right">Desc. TikTok</th>
+                </>
+              )}
+              <th className="text-right">Total do item</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -167,8 +218,25 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
                 </td>
                 <td className="select-all font-mono t-3">{g.skuId ?? "—"}</td>
                 <td className="text-right font-semibold t-1">{g.quantity}</td>
-                <td className="text-right t-1">
-                  {formatPrice(g.salePrice, g.currency)}
+                <td className="text-right t-2">
+                  {formatMoney(g.originalTotal, g.currency ?? currency)}
+                </td>
+                {anyDiscount && (
+                  <>
+                    <td className="text-right text-[var(--green)]">
+                      {isZero(g.sellerDiscountTotal)
+                        ? "—"
+                        : `− ${formatMoney(g.sellerDiscountTotal, g.currency ?? currency)}`}
+                    </td>
+                    <td className="text-right text-[var(--green)]">
+                      {isZero(g.platformDiscountTotal)
+                        ? "—"
+                        : `− ${formatMoney(g.platformDiscountTotal, g.currency ?? currency)}`}
+                    </td>
+                  </>
+                )}
+                <td className="text-right font-semibold t-1">
+                  {formatMoney(g.saleTotal, g.currency ?? currency)}
                   {g.priceVaries && (
                     <span className="ml-1 text-amber-600" title="Unidades deste SKU saíram com preços diferentes">
                       *
@@ -190,86 +258,12 @@ function LineItemsTable({ items }: { items: OrderLineItem[] }) {
   );
 }
 
-function PaymentBlock({ payment }: { payment: OrderPayment | undefined }) {
-  if (payment === undefined) return null;
-  const c = payment.currency;
-
-  // Mostra a conta completa (preço original → descontos → subtotal, o
-  // mesmo para o frete) para que "subtotal = total" fique óbvio quando o
-  // frete saiu zerado por desconto, em vez de parecer um erro de cálculo.
-  const productRows: Array<[string, string | undefined, boolean]> = [
-    ["Preço original dos produtos", payment.original_total_product_price, false],
-    ["Desconto do vendedor", payment.seller_discount, true],
-    ["Desconto da plataforma", payment.platform_discount, true],
-  ];
-  const shippingRows: Array<[string, string | undefined, boolean]> = [
-    ["Frete original", payment.original_shipping_fee, false],
-    ["Desconto do vendedor (frete)", payment.shipping_fee_seller_discount, true],
-    ["Desconto da plataforma (frete)", payment.shipping_fee_platform_discount, true],
-    ["Desconto cofinanciado (frete)", payment.shipping_fee_cofunded_discount, true],
-  ];
-  const extraRows: Array<[string, string | undefined, boolean]> = [
-    ["Impostos sobre produtos", payment.product_tax ?? payment.tax, false],
-    ["Impostos sobre o frete", payment.shipping_fee_tax, false],
-    ["Taxa de pedido pequeno", payment.small_order_fee, false],
-    ["Taxa de entrega (retail delivery)", payment.retail_delivery_fee, false],
-    ["Taxa de serviço do comprador", payment.buyer_service_fee, false],
-    ["Taxa de manuseio", payment.handling_fee, false],
-    ["Seguro de envio", payment.shipping_insurance_fee, false],
-    ["Seguro do item", payment.item_insurance_fee, false],
-  ];
-
-  const renderDiscountRows = (rows: Array<[string, string | undefined, boolean]>) =>
-    rows
-      .filter(([, value]) => !isZeroOrEmpty(value))
-      .map(([label, value, isDiscount]) => (
-        <div key={label} className="flex items-center justify-between gap-2">
-          <dt className="t-4">{label}</dt>
-          <dd className={`font-medium ${isDiscount ? "text-[var(--green)]" : "t-1"}`}>
-            {isDiscount ? "− " : ""}
-            {formatPrice(value, c)}
-          </dd>
-        </div>
-      ));
-
-  const hasExtras = extraRows.some(([, value]) => !isZeroOrEmpty(value));
-
-  return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--border)]">
-      <div className="side-block !pb-2">
-        <div className="side-label flex items-center gap-1.5">
-          <CreditCard className="h-3 w-3" />
-          Pagamento
-        </div>
-        <dl className="space-y-1 text-xs">
-          {renderDiscountRows(productRows)}
-          <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] pt-1">
-            <dt className="font-semibold t-2">Subtotal produtos</dt>
-            <dd className="font-semibold t-1">{formatPrice(payment.sub_total, c)}</dd>
-          </div>
-
-          {renderDiscountRows(shippingRows)}
-          <div className="flex items-center justify-between gap-2 border-t border-[var(--border)] pt-1">
-            <dt className="font-semibold t-2">Frete cobrado</dt>
-            <dd className="font-semibold t-1">{formatPrice(payment.shipping_fee, c)}</dd>
-          </div>
-
-          {hasExtras && renderDiscountRows(extraRows)}
-
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <dt className="t-4">Total</dt>
-            <dd className="line !inline-flex !bg-transparent !border-0 !p-0">
-              <span className="ln-v amount">{formatPrice(payment.total_amount, c)}</span>
-            </dd>
-          </div>
-        </dl>
-      </div>
-    </div>
-  );
-}
-
 function RecipientBlock({ address }: { address: RecipientAddress | undefined }) {
   if (address === undefined) return null;
+
+  const levels = address.district_info ?? [];
+  const named = (level: string): string | undefined =>
+    levels.find((d) => d.address_level === level)?.address_name;
 
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--border)]">
@@ -281,11 +275,99 @@ function RecipientBlock({ address }: { address: RecipientAddress | undefined }) 
         <dl className="space-y-1 text-xs">
           <Row label="Nome" value={address.name} />
           <Row label="Telefone" value={address.phone_number} />
-          <Row label="Endereço" value={address.full_address} />
-          <Row
-            label="CEP / região"
-            value={[address.postal_code, address.region_code].filter(Boolean).join(" · ") || undefined}
-          />
+          <Row label="Logradouro" value={address.address_line2} />
+          <Row label="Número" value={address.address_line1} />
+          <Row label="Complemento" value={address.address_line3} />
+          <Row label="Bairro" value={address.address_line4} />
+          <Row label="Detalhe" value={address.address_detail} />
+          <Row label="Cidade" value={named("L2")} />
+          <Row label="Estado" value={named("L1")} />
+          <Row label="País" value={named("L0")} />
+          <Row label="CEP" value={address.postal_code} />
+          <Row label="Endereço completo" value={address.full_address} />
+        </dl>
+        <p className="mt-2 text-[10px] leading-relaxed t-4">
+          Telefone e e-mail vêm mascarados pela API; o valor real só aparece na etiqueta gerada pelo
+          TikTok. Confira a ordem logradouro/número: o TikTok numera as linhas de endereço por região
+          e nem sempre bate com o layout do ERP.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Dados que a emissão da nota fiscal no Brasil exige e o financeiro cobra. */
+function FiscalBlock({ order }: { order: Order }) {
+  const rows: Array<[string, string | undefined]> = [
+    ["CNPJ do marketplace", order.channel_entity_national_registry_id],
+    ["Nota fiscal", order.need_upload_invoice],
+    ["Código do pagamento", order.payment_method_code],
+    ["Autorização", order.payment_auth_code],
+    ["E-mail do comprador", order.buyer_email],
+    ["Canal", order.commerce_platform],
+    ["Tipo de pedido", order.order_type],
+    ["Armazém", order.warehouse_id],
+  ];
+  const present = rows.filter(([, value]) => value !== undefined && value !== "");
+  if (present.length === 0) return null;
+
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--border)]">
+      <div className="side-block !pb-2">
+        <div className="side-label flex items-center gap-1.5">
+          <FileText className="h-3 w-3" />
+          Fiscal e pagamento
+        </div>
+        <dl className="space-y-1 text-xs">
+          {present.map(([label, value]) => (
+            <div key={label} className="flex gap-2">
+              <dt className="w-36 shrink-0 t-4">{label}</dt>
+              <dd className="select-all break-all font-mono t-1">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+/** Prazos do pedido, com quanto falta para cada um. */
+function DeadlinesBlock({ order }: { order: Order }) {
+  const rows: Array<[string, number | undefined]> = [
+    ["Postar até (RTS)", order.rts_sla_time],
+    ["Entregar à transportadora (TTS)", order.tts_sla_time],
+    ["Coleta até", order.collection_due_time],
+    ["Cancelamento automático", order.cancel_order_sla_time],
+    ["SLA de entrega", order.delivery_sla_time],
+    ["Envio até", order.shipping_due_time],
+  ];
+  const present = rows.filter(([, value]) => value !== undefined && value > 0);
+  if (present.length === 0) return null;
+
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--border)]">
+      <div className="side-block !pb-2">
+        <div className="side-label flex items-center gap-1.5">
+          <Clock className="h-3 w-3" />
+          Prazos
+        </div>
+        <dl className="space-y-1 text-xs">
+          {present.map(([label, value]) => {
+            const hint = deadlineHint(value);
+            return (
+              <div key={label} className="flex items-baseline justify-between gap-2">
+                <dt className="t-4">{label}</dt>
+                <dd className="text-right t-1">
+                  {formatEpochBR(value)}
+                  {hint !== undefined && (
+                    <span className={`ml-1 text-[10px] ${hint.overdue ? "text-[var(--rose)]" : "t-4"}`}>
+                      ({hint.label})
+                    </span>
+                  )}
+                </dd>
+              </div>
+            );
+          })}
         </dl>
       </div>
     </div>

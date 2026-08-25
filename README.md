@@ -155,17 +155,60 @@ path + query intactos.
     tabela de SKUs (com botão de copiar a coluna `seller_sku`), descrição
     sanitizada com DOMPurify, atributos, dimensões/peso.
   - *Pedidos*: um cartão por pedido com status, datas, entrega, rastreio,
-    pagamento e destinatário. IDs solicitados que não voltaram na resposta
-    são sinalizados. A tabela de itens **agrupa por SKU e mostra a
-    quantidade**: cada entrada de `line_items` é uma unidade (2 camisetas
-    iguais vêm como duas entradas), então a lista crua repetiria linhas sem
-    informar quantidade. O botão copia uma linha por SKU, que é o formato
-    usado para cruzar com o cadastro do ERP.
+    marcadores (COD, amostra, retido, endereço alterado…), destinatário
+    destrinchado (logradouro, número, bairro, cidade/UF pelo
+    `district_info`), bloco **fiscal e de pagamento** (CNPJ do
+    marketplace, `need_upload_invoice`, código do meio de pagamento e da
+    autorização) e **prazos** (RTS, TTS, coleta, cancelamento automático)
+    com quanto falta para cada um. IDs solicitados que não voltaram na
+    resposta são sinalizados. A tabela de itens **agrupa por SKU e mostra
+    a quantidade**: cada entrada de `line_items` é uma unidade (2
+    camisetas iguais vêm como duas entradas), então a lista crua repetiria
+    linhas sem informar quantidade; as colunas mostram a conta do item
+    (preço cheio, desconto de cada lado, total). O botão copia uma linha
+    por SKU, que é o formato usado para cruzar com o cadastro do ERP.
   - *Transações*: resumo do pedido (receita, taxas/impostos, frete e
     settlement) e uma tabela com uma linha por SKU. Clicar na linha expande
     o detalhamento de receita, frete (incluindo componentes suplementares) e
     taxas/impostos daquele SKU, escondendo os componentes zerados — só os
     valores que efetivamente impactaram o settlement aparecem.
+- **Extrato financeiro do pedido** ([`src/lib/orderStatement.ts`](src/lib/orderStatement.ts)),
+  no cartão de pedidos, em três leituras que se completam:
+  1. *Extrato do vendedor* — crédito × débito e **total líquido a
+     receber**, no mesmo formato do extrato oficial, mas mostrando de qual
+     campo do JSON veio cada linha e escondendo por padrão as linhas
+     zeradas.
+  2. *O que o comprador pagou* — a conta passo a passo (itens − descontos,
+     frete cheio − subsídios, taxas), com cada seção **conferida contra o
+     campo que a API já devolve pronto** (`sub_total`, `shipping_fee`,
+     `total_amount`). Divergência aparece em vermelho com os dois valores.
+  3. *Quem pagou o frete* — comprador, plataforma e vendedor separados.
+     Em pedido com etiqueta do TikTok (`shipping_type: TIKTOK`) a
+     plataforma contrata e paga o envio, então o frete cobrado do
+     comprador **entra como crédito e volta como débito**, fechando em
+     zero — é assim que o extrato oficial fecha o mesmo pedido.
+
+  Há ainda um bloco de *conferências* cruzando `line_items[]` com
+  `payment` (soma dos itens × `sub_total`, descontos, `sub_total` + frete ×
+  `total_amount`).
+
+  ⚠️ **Comissões e taxas de venda não existem no Get Order Detail** —
+  nenhum campo do pedido carrega esse valor. O número oficial está nas
+  *transações do pedido*
+  (`/finance/202501/orders/{order_id}/statement_transactions`, a consulta
+  do item anterior), que trazem receita, taxas e `settlement_amount` já
+  apurados. Para uma estimativa sem uma segunda consulta, o campo de
+  comissão aceita **percentual** (`36%`, aplicado sobre o total pago) ou
+  **valor** (`6,82`), e o resultado sai sempre marcado como informado;
+  enquanto nada for preenchido, o líquido é exibido como um teto. O
+  percentual fica em `localStorage` — é o mesmo para a loja toda; o valor
+  absoluto não persiste, porque é específico daquele pedido.
+
+  Todo o dinheiro é somado em **inteiros de escala 4**
+  ([`src/lib/money.ts`](src/lib/money.ts)): com `Number` direto, somar os
+  decimais da API acumula erro binário e o total deixa de bater com
+  `total_amount` por centavos — justamente a conferência que a tela existe
+  para fazer.
 - **Diagnóstico de integração**: alertas automáticos de `external_product_id`
   ambíguo, `seller_sku` vazio/duplicado, estoque baixo, preços divergentes,
   EAN ausente e descrição escrita para uma única cor.
@@ -184,6 +227,8 @@ src/
   lib/endpoint.ts        # monta os endpoints de anúncio, pedidos e transações
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
   lib/orders.ts          # agrupamento dos itens do pedido por SKU
+  lib/money.ts           # aritmética exata sobre os valores em string da API
+  lib/orderStatement.ts  # extrato do pedido: crédito × débito e conferências
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
   lib/*.test.ts          # testes das funções puras
   lib/api.ts             # camada de chamada (fetch via proxy /api/tts)

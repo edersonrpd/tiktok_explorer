@@ -152,6 +152,7 @@ export interface OrderPayment {
   original_shipping_fee?: string;
   shipping_fee_seller_discount?: string;
   shipping_fee_platform_discount?: string;
+  /** Desconto de frete dividido entre plataforma e vendedor. */
   shipping_fee_cofunded_discount?: string;
   tax?: string;
   product_tax?: string;
@@ -224,6 +225,9 @@ export interface OrderLineItem {
   shipping_provider_name?: string;
   shipping_provider_id?: string;
   is_gift?: boolean;
+  gift_retail_price?: string;
+  shipping_vat_amount?: string;
+  shipping_vat_rate?: string;
   rts_time?: number;
   item_tax?: ItemTax[];
   combined_listing_skus?: CombinedListingSku[];
@@ -266,6 +270,16 @@ export interface Order {
   delivery_option_name?: string;
   fulfillment_type?: string;
   warehouse_id?: string;
+  delivery_option_id?: string;
+  has_updated_recipient_address?: boolean;
+  /** SLAs do pedido (epoch em segundos). */
+  rts_sla_time?: number;
+  tts_sla_time?: number;
+  cancel_order_sla_time?: number;
+  collection_due_time?: number;
+  /** CNPJ da entidade do marketplace, usado na nota fiscal. */
+  channel_entity_national_registry_id?: string;
+  need_upload_invoice?: string;
   cancel_reason?: string;
   cancellation_initiator?: string;
   is_buyer_request_cancel?: boolean;
@@ -277,6 +291,8 @@ export interface Order {
   split_or_combine_tag?: string;
   payment_method_name?: string;
   payment_method_code?: string;
+  /** Código da autorização do pagamento (o "E2085..." do Pix, por exemplo). */
+  payment_auth_code?: string;
   /** CPF do comprador — obrigatório em pedidos no Brasil. */
   cpf?: string;
   /** Nome completo associado ao CPF, como declarado na nota fiscal. */
