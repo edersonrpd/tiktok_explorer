@@ -8,13 +8,15 @@
  * sistema que assina.
  *
  * ONDE CADA CÓDIGO ENTRA:
- * - Produto:  o ID vai no PATH  → /product/202309/products/{id}
- * - Pedidos:  os IDs vão na QUERY → /order/202507/orders?ids=a,b
- * - Extrato:  o ID vai no PATH e os parâmetros de paginação/ordenação
- *   vão na QUERY →
+ * - Produto:   o ID vai no PATH  → /product/202309/products/{id}
+ * - Pedidos:   os IDs vão na QUERY → /order/202507/orders?ids=a,b
+ * - Transações do pedido: o ID vai no PATH →
+ *   /finance/202501/orders/{id}/statement_transactions
+ * - Transações do extrato: o ID vai no PATH e os parâmetros de
+ *   paginação/ordenação vão na QUERY →
  *   /finance/202501/statements/{id}/statement_transactions?sort_field=...
  *
- * Em pedidos e extrato há parâmetros de negócio na query (`ids`,
+ * Em pedidos e no extrato há parâmetros de negócio na query (`ids`,
  * `sort_field`, `page_size`, `sort_order`, `page_token`), que por isso são
  * assinados junto com os demais. Eles precisam estar presentes ANTES da
  * assinatura — acrescentar qualquer um depois invalidaria o `sign` (erro
@@ -24,24 +26,33 @@
 /** Versão do endpoint de produto da Open API (parte do path assinado). */
 export const PRODUCT_API_VERSION = "202309";
 
-/**
- * Versões disponíveis do endpoint de pedidos. As duas recebem `ids` na
- * query e devolvem a mesma estrutura (a 202507 acrescenta campos); a
- * escolha não muda nada quanto à assinatura.
- */
-export const ORDER_API_VERSIONS = ["202507", "202309"] as const;
-export type OrderApiVersion = (typeof ORDER_API_VERSIONS)[number];
+/** Versão do endpoint de pedidos da Open API (parte do path assinado). */
+export const ORDER_API_VERSION = "202507";
 
-/** Versão padrão do endpoint de pedidos (parte do path assinado). */
-export const ORDER_API_VERSION: OrderApiVersion = "202507";
+/** Versão do endpoint de transações por pedido da Open API (parte do path assinado). */
+export const TRANSACTION_API_VERSION = "202501";
+
+/** Versão do endpoint de transações por extrato (parte do path assinado). */
+export const STATEMENT_API_VERSION = "202501";
 
 /** Limite de IDs por chamada, conforme a documentação do Get Order Detail. */
 export const MAX_ORDER_IDS = 50;
 
 /** Tipo de recurso que a aplicação sabe consultar e exibir. */
-export type ResourceKind = "product" | "order" | "statement" | "other";
+export type ResourceKind = "product" | "order" | "transaction" | "statement" | "other";
 
 export type EndpointResult = { ok: true; path: string } | { ok: false; reason: string };
+
+/**
+ * Primeira limpeza do que foi colado: tira aspas e sinais de copiar/colar
+ * das pontas e descarta a query. O que sobra é path ou ID puro — de onde
+ * cada endpoint extrai o código do jeito dele.
+ */
+function cleanIdInput(raw: string): string {
+  const value = raw.trim().replace(/^["'`<]+/, "").replace(/["'`>]+$/, "").trim();
+  const queryIndex = value.indexOf("?");
+  return (queryIndex === -1 ? value : value.slice(0, queryIndex)).trim();
+}
 
 /**
  * Extrai um ID de um valor colado. Aceita o ID puro, mas também tolera o
@@ -49,15 +60,10 @@ export type EndpointResult = { ok: true; path: string } | { ok: false; reason: s
  * antes da query, além de aspas e espaços de copiar/colar.
  */
 export function cleanProductId(raw: string): string {
-  let value = raw.trim().replace(/^["'`<]+/, "").replace(/["'`>]+$/, "").trim();
-
-  const queryIndex = value.indexOf("?");
-  if (queryIndex !== -1) value = value.slice(0, queryIndex);
+  const value = cleanIdInput(raw);
 
   const lastSlash = value.lastIndexOf("/");
-  if (lastSlash !== -1) value = value.slice(lastSlash + 1);
-
-  return value.trim();
+  return (lastSlash === -1 ? value : value.slice(lastSlash + 1)).trim();
 }
 
 /** Monta `/product/{versão}/products/{id}` ou explica por que não deu. */
@@ -104,10 +110,7 @@ export function parseOrderIds(raw: string): string[] {
  * TikTok — não aplicamos encoding aqui, e o sistema de assinatura deve
  * assinar a query nesse mesmo formato.
  */
-export function buildOrderEndpoint(
-  raw: string,
-  version: OrderApiVersion = ORDER_API_VERSION,
-): EndpointResult {
+export function buildOrderEndpoint(raw: string): EndpointResult {
   const ids = parseOrderIds(raw);
 
   if (ids.length === 0) {
@@ -129,11 +132,28 @@ export function buildOrderEndpoint(
     };
   }
 
-  return { ok: true, path: `/order/${version}/orders?ids=${ids.join(",")}` };
+  return { ok: true, path: `/order/${ORDER_API_VERSION}/orders?ids=${ids.join(",")}` };
 }
 
-/** Versão do endpoint de extrato (parte do path assinado). */
-export const STATEMENT_API_VERSION = "202501";
+/** Monta `/finance/{versão}/orders/{order_id}/statement_transactions`. */
+export function buildTransactionEndpoint(rawId: string): EndpointResult {
+  const id = cleanProductId(rawId);
+
+  if (id === "") {
+    return { ok: false, reason: "Informe o código do pedido (order_id)." };
+  }
+  if (!/^\d+$/.test(id)) {
+    return {
+      ok: false,
+      reason: `O código do pedido é composto só por números (ex.: 5793990727963214852). Valor lido: "${id}".`,
+    };
+  }
+
+  return {
+    ok: true,
+    path: `/finance/${TRANSACTION_API_VERSION}/orders/${id}/statement_transactions`,
+  };
+}
 
 /**
  * Único valor aceito por `sort_field` na documentação — e ele é
@@ -161,25 +181,20 @@ export interface StatementEndpointOptions {
 /**
  * Extrai o ID do extrato de um valor colado.
  *
- * Diferente de produto e pedido, aqui o ID fica no MEIO do caminho
- * (`/statements/{id}/statement_transactions`), então pegar o último
- * segmento devolveria "statement_transactions". Por isso o ID é buscado
- * depois de `/statements/`, com o último segmento como plano B para quem
- * colou só o ID.
+ * Diferente dos outros endpoints, aqui o ID fica no MEIO do caminho
+ * (`/statements/{id}/statement_transactions`), então `cleanProductId`
+ * devolveria "statement_transactions". Por isso o ID é buscado depois de
+ * `/statements/`, com o último segmento como plano B para quem colou só
+ * o ID.
  */
 export function cleanStatementId(raw: string): string {
-  let value = raw.trim().replace(/^["'`<]+/, "").replace(/["'`>]+$/, "").trim();
-
-  const queryIndex = value.indexOf("?");
-  if (queryIndex !== -1) value = value.slice(0, queryIndex);
+  const value = cleanIdInput(raw);
 
   const match = /\/statements\/([^/?]+)/.exec(value);
   if (match?.[1] !== undefined) return match[1].trim();
 
   const lastSlash = value.lastIndexOf("/");
-  if (lastSlash !== -1) value = value.slice(lastSlash + 1);
-
-  return value.trim();
+  return (lastSlash === -1 ? value : value.slice(lastSlash + 1)).trim();
 }
 
 /**
@@ -218,7 +233,11 @@ export function buildStatementEndpoint(
 
   const { pageSize = DEFAULT_STATEMENT_PAGE_SIZE, sortOrder = "DESC", pageToken } = options;
 
-  if (!Number.isInteger(pageSize) || pageSize < MIN_STATEMENT_PAGE_SIZE || pageSize > MAX_STATEMENT_PAGE_SIZE) {
+  if (
+    !Number.isInteger(pageSize) ||
+    pageSize < MIN_STATEMENT_PAGE_SIZE ||
+    pageSize > MAX_STATEMENT_PAGE_SIZE
+  ) {
     return {
       ok: false,
       reason: `page_size precisa ser um inteiro entre ${MIN_STATEMENT_PAGE_SIZE} e ${MAX_STATEMENT_PAGE_SIZE} (informado: ${pageSize}).`,
@@ -254,10 +273,11 @@ export function buildStatementEndpoint(
 export function detectResourceKind(path: string): ResourceKind {
   if (path.startsWith("/product/")) return "product";
   if (path.startsWith("/order/")) return "order";
-  // Só as transações do extrato têm exibição dedicada; a listagem de
-  // extratos (/finance/.../statements) cai no JSON bruto.
-  if (path.startsWith("/finance/") && path.endsWith("/statement_transactions")) {
-    return "statement";
+  // Os dois endpoints de finanças terminam em /statement_transactions e só
+  // se distinguem pelo segmento do meio: /orders/{id} traz as transações
+  // de UM pedido; /statements/{id} traz as do repasse inteiro.
+  if (path.startsWith("/finance/")) {
+    return path.includes("/statements/") ? "statement" : "transaction";
   }
   return "other";
 }

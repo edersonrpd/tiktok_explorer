@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Music2, Search } from "lucide-react";
 import { fetchResource, type FetchFailure } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
 import {
@@ -15,6 +16,7 @@ import type {
   Product,
   StatementTransactionsData,
   TikTokApiResponse,
+  TransactionsByOrderData,
 } from "./types/tiktok";
 import { EndpointBuilder } from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
@@ -26,10 +28,13 @@ import { DescriptionCard } from "./components/DescriptionCard";
 import { AttributesCard, PackageCard } from "./components/AttributesCard";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { OrderView } from "./components/OrderView";
+import { TransactionView } from "./components/TransactionView";
 import { StatementView, type StatementPageQuery } from "./components/StatementView";
 import { RawJson } from "./components/RawJson";
 import { HistoryList } from "./components/HistoryList";
 import { Card } from "./components/ui";
+import { JsonDrawer } from "./components/JsonDrawer";
+import { Toast } from "./components/Toast";
 
 const TOKEN_STORAGE_KEY = "tiktok-product-viewer.access-token";
 const HISTORY_LIMIT = 10;
@@ -38,6 +43,7 @@ const HISTORY_LIMIT = 10;
 export type LoadedResource =
   | { kind: "product"; product: Product }
   | { kind: "order"; orders: Order[]; requestedIds: string[] }
+  | { kind: "transaction"; data: TransactionsByOrderData }
   | { kind: "statement"; statement: StatementTransactionsData; query: StatementPageQuery }
   | { kind: "other" };
 
@@ -100,6 +106,21 @@ export default function App() {
   // Histórico só em memória — some ao recarregar a página, de propósito.
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
+  const [jsonDrawerOpen, setJsonDrawerOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
+  const [showToast, setShowToast] = useState(false);
+
+  const displayToast = useCallback((msg: string) => {
+    setToastMsg(msg);
+    setShowToast(true);
+  }, []);
+
+  useEffect(() => {
+    if (!showToast) return;
+    const timer = setTimeout(() => setShowToast(false), 2000);
+    return () => clearTimeout(timer);
+  }, [showToast]);
+
   const handleSubmit = useCallback(
     async (normalized: NormalizedUrl) => {
       setView({ kind: "loading" });
@@ -135,6 +156,11 @@ export default function App() {
         resource = { kind: "order", orders, requestedIds: requestedOrderIds(normalized) };
         label = `${orders.length} pedido(s)`;
         subtitle = orders.map((o) => o.id).join(", ") || "nenhum retornado";
+      } else if (kind === "transaction") {
+        const data = result.data as TransactionsByOrderData;
+        resource = { kind: "transaction", data };
+        label = `Transações do pedido ${data.order_id}`;
+        subtitle = `${data.sku_transactions?.length ?? 0} SKU(s) · settlement ${data.settlement_amount ?? "—"} ${data.currency ?? ""}`.trim();
       } else if (kind === "statement") {
         const statement = result.data as StatementTransactionsData;
         const count = statement.transactions?.length ?? 0;
@@ -180,18 +206,30 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
-      <header className="border-b border-slate-200 bg-white px-6 py-3">
-        <h1 className="text-base font-bold">TikTok Shop Viewer</h1>
-        <p className="text-xs text-slate-500">
-          Consulta de anúncios, pedidos e extratos via URL pré-assinada — a query string nunca é modificada.
-        </p>
+    <div className="min-h-screen">
+      <header className="app-header px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[1320px] items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="hdr-mark">
+              <Music2 className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-lg font-extrabold leading-none tracking-tight hdr-title">
+                TikTok Shop
+              </h1>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-widest hdr-sub">
+                Viewer de Anúncios &amp; Pedidos
+              </p>
+            </div>
+          </div>
+          <div className="hdr-chip">open-api.tiktokglobalshop.com</div>
+        </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-4 px-4 py-4 lg:grid-cols-[380px_1fr]">
-        <div className="space-y-4">
+      <main className="mx-auto max-w-[1320px] space-y-4 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
           <EndpointBuilder />
-          <Card title="2. Consultar">
+          <Card title="2. Consultar" icon={<Search />}>
             <QueryForm
               token={token}
               onTokenChange={setToken}
@@ -199,22 +237,23 @@ export default function App() {
               loading={view.kind === "loading"}
             />
           </Card>
-          <HistoryList
-            entries={history}
-            onSelect={handleHistorySelect}
-            activeId={view.kind === "success" ? view.historyKey : null}
-          />
         </div>
+
+        <HistoryList
+          entries={history}
+          onSelect={handleHistorySelect}
+          activeId={view.kind === "success" ? view.historyKey : null}
+        />
 
         <div className="space-y-4">
           {view.kind === "idle" && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-sm text-slate-400">
-              Cole a URL assinada e o access token à esquerda e clique em <strong>Consultar</strong>.
+            <div className="loading-card px-6 py-16 text-center text-sm t-4">
+              Cole a URL assinada e o access token acima e clique em <strong>Consultar</strong>.
             </div>
           )}
 
           {view.kind === "loading" && (
-            <div className="rounded-lg border border-slate-200 bg-white px-6 py-16 text-center text-sm text-slate-500">
+            <div className="loading-card px-6 py-16 text-center text-sm t-3">
               <span className="inline-block animate-pulse">Consultando a API do TikTok Shop…</span>
             </div>
           )}
@@ -232,19 +271,21 @@ export default function App() {
             <>
               {view.resource.kind === "product" && (
                 <>
-                  <ProductHeader product={view.resource.product} />
+                  <ProductHeader product={view.resource.product} onToast={displayToast} />
                   <DiagnosticsPanel alerts={diagnostics} />
                   <SkuTable skus={view.resource.product.skus ?? []} />
                   <Gallery
                     images={view.resource.product.main_images ?? []}
                     video={view.resource.product.video}
                   />
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <AttributesCard attributes={view.resource.product.product_attributes ?? []} />
+                    <PackageCard
+                      dimensions={view.resource.product.package_dimensions}
+                      weight={view.resource.product.package_weight}
+                    />
+                  </div>
                   <DescriptionCard html={view.resource.product.description} />
-                  <AttributesCard attributes={view.resource.product.product_attributes ?? []} />
-                  <PackageCard
-                    dimensions={view.resource.product.package_dimensions}
-                    weight={view.resource.product.package_weight}
-                  />
                 </>
               )}
 
@@ -255,11 +296,12 @@ export default function App() {
                 />
               )}
 
+              {view.resource.kind === "transaction" && (
+                <TransactionView data={view.resource.data} />
+              )}
+
               {view.resource.kind === "statement" && (
-                <StatementView
-                  data={view.resource.statement}
-                  query={view.resource.query}
-                />
+                <StatementView data={view.resource.statement} query={view.resource.query} />
               )}
 
               {view.resource.kind === "other" && (
@@ -269,11 +311,24 @@ export default function App() {
                 </div>
               )}
 
-              <RawJson response={view.response} />
+              <RawJson response={view.response} onView={() => setJsonDrawerOpen(true)} />
             </>
           )}
         </div>
       </main>
+
+      {view.kind === "success" && (
+        <JsonDrawer
+          isOpen={jsonDrawerOpen}
+          onClose={() => setJsonDrawerOpen(false)}
+          data={view.response}
+          title="Resposta da API"
+          subtitle={view.response.code === 0 ? "OK" : `code ${view.response.code}`}
+          onToast={displayToast}
+        />
+      )}
+
+      <Toast message={toastMsg} show={showToast} />
     </div>
   );
 }

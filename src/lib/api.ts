@@ -3,6 +3,7 @@ import type {
   Product,
   StatementTransactionsData,
   TikTokApiResponse,
+  TransactionsByOrderData,
 } from "../types/tiktok";
 import type { NormalizedUrl } from "./signedUrl";
 import { TARGET_HEADER, TOKEN_HEADER } from "./proxyTarget";
@@ -116,6 +117,14 @@ export function fetchOrders(
   accessToken: string,
 ): Promise<FetchResult<OrderListData>> {
   return fetchResource<OrderListData>(normalized, accessToken);
+}
+
+/** GET /finance/202501/orders/{order_id}/statement_transactions */
+export function fetchTransactionsByOrder(
+  normalized: NormalizedUrl,
+  accessToken: string,
+): Promise<FetchResult<TransactionsByOrderData>> {
+  return fetchResource<TransactionsByOrderData>(normalized, accessToken);
 }
 
 /** GET /finance/202501/statements/{id}/statement_transactions */

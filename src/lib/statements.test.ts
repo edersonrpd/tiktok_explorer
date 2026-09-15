@@ -2,75 +2,73 @@ import { describe, expect, it } from "vitest";
 import {
   checkStatementFormulas,
   nonZeroEntries,
-  parseAmount,
-  sumAmounts,
   totalsByType,
   transactionsTsv,
-  zeroFieldCount,
+  hiddenFieldCount,
 } from "./statements";
+import { labelFrom } from "./statementLabels";
+import { parseMoney, toDecimalString } from "./money";
 import type { StatementTransaction, StatementTransactionsData } from "../types/tiktok";
 
-describe("parseAmount", () => {
-  it("lê valores positivos, negativos e zero", () => {
-    expect(parseAmount("150")).toBe(150);
-    expect(parseAmount("-70.5")).toBe(-70.5);
-    expect(parseAmount("0")).toBe(0);
+/** Valor monetário como decimal legível — os totais são Money (escala 4). */
+const decimal = (value: number | undefined) =>
+  value === undefined ? undefined : toDecimalString(value);
+
+describe("leitura dos valores do extrato", () => {
+  it("lê positivos, negativos e zero via parseMoney", () => {
+    expect(decimal(parseMoney("150"))).toBe("150.00");
+    expect(decimal(parseMoney("-70.5"))).toBe("-70.50");
+    expect(decimal(parseMoney("0"))).toBe("0.00");
   });
 
   it("tolera o espaço sobrando que a própria documentação mostra", () => {
-    expect(parseAmount("0 ")).toBe(0);
+    expect(decimal(parseMoney("0 "))).toBe("0.00");
   });
 
-  it("distingue ausente/vazio (null) de zero", () => {
-    expect(parseAmount(undefined)).toBeNull();
-    expect(parseAmount("")).toBeNull();
-    expect(parseAmount("   ")).toBeNull();
-    expect(parseAmount("n/a")).toBeNull();
-  });
-});
-
-describe("sumAmounts", () => {
-  it("soma como número, não concatena string", () => {
-    expect(sumAmounts(["10", "20", "-5"])).toBe(25);
-  });
-
-  it("trata ausentes como zero", () => {
-    expect(sumAmounts(["10", undefined, ""])).toBe(10);
+  it("distingue ausente/vazio (undefined) de zero", () => {
+    expect(parseMoney(undefined)).toBeUndefined();
+    expect(parseMoney("")).toBeUndefined();
+    expect(parseMoney("   ")).toBeUndefined();
+    expect(parseMoney("n/a")).toBeUndefined();
   });
 });
 
 describe("nonZeroEntries", () => {
-  const labels = { platform_commission_amount: "Comissão", vat_amount: "VAT" };
+  const label = labelFrom({ platform_commission_amount: "Comissão", vat_amount: "VAT" });
 
   it("omite zerados e ordena pelo maior impacto", () => {
     const entries = nonZeroEntries(
       { platform_commission_amount: "-20", vat_amount: "-35", transaction_fee_amount: "0" },
-      labels,
+      label,
     );
     expect(entries.map((e) => e.field)).toEqual(["vat_amount", "platform_commission_amount"]);
   });
 
-  it("mostra o nome original quando não há tradução", () => {
-    const entries = nonZeroEntries({ campo_novo_da_api: "5" }, labels);
-    expect(entries[0]?.label).toBe("campo_novo_da_api");
+  it("cai no rótulo genérico quando não há tradução, em vez de sumir", () => {
+    const entries = nonZeroEntries({ campo_novo_da_api: "5" }, label);
+    expect(entries[0]?.label).toBe("Campo novo da api");
   });
 
   it("ignora objetos aninhados (ex.: supplementary_component)", () => {
     const entries = nonZeroEntries(
       { vat_amount: "10", supplementary_component: { a: "5" } },
-      labels,
+      label,
     );
     expect(entries).toHaveLength(1);
   });
 
   it("devolve lista vazia quando o detalhamento não veio", () => {
-    expect(nonZeroEntries(undefined, labels)).toEqual([]);
+    expect(nonZeroEntries(undefined, label)).toEqual([]);
   });
 });
 
-describe("zeroFieldCount", () => {
-  it("conta quantos campos vieram zerados", () => {
-    expect(zeroFieldCount({ a: "0", b: "0 ", c: "5", d: "" })).toBe(2);
+describe("hiddenFieldCount", () => {
+  it("conta o que a lista escondeu: zerados e vazios", () => {
+    expect(hiddenFieldCount({ a: "0", b: "0 ", c: "5", d: "" })).toBe(3);
+  });
+
+  it("não conta nada quando o detalhamento não veio", () => {
+    expect(hiddenFieldCount(undefined)).toBe(0);
   });
 });
 
@@ -84,15 +82,11 @@ describe("totalsByType", () => {
 
   it("agrupa por tipo somando repasse, ajuste e reserva", () => {
     const totals = totalsByType(transactions);
-    expect(totals[0]).toEqual({
-      type: "ORDER",
-      count: 2,
-      settlement: 110,
-      adjustment: 0,
-      reserve: 0,
-    });
-    expect(totals.find((t) => t.type === "RESERVE")?.reserve).toBe(100);
-    expect(totals.find((t) => t.type === "PLATFORM_PENALTY")?.adjustment).toBe(-50);
+    expect(totals[0]?.type).toBe("ORDER");
+    expect(totals[0]?.count).toBe(2);
+    expect(decimal(totals[0]?.settlement)).toBe("110.00");
+    expect(decimal(totals.find((t) => t.type === "RESERVE")?.reserve)).toBe("100.00");
+    expect(decimal(totals.find((t) => t.type === "PLATFORM_PENALTY")?.adjustment)).toBe("-50.00");
   });
 
   it("não perde transações sem tipo", () => {
@@ -131,11 +125,11 @@ describe("checkStatementFormulas", () => {
     };
     const checks = checkStatementFormulas(data);
     expect(checks[0]?.matches).toBe(false);
-    expect(checks[0]?.expected).toBe(130);
-    expect(checks[0]?.returned).toBe(999);
+    expect(decimal(checks[0]?.expected)).toBe("130.00");
+    expect(decimal(checks[0]?.returned)).toBe("999.00");
   });
 
-  it("tolera diferença de arredondamento de um centavo", () => {
+  it("tolera diferença abaixo de um centavo", () => {
     const data: StatementTransactionsData = {
       total_settlement_amount: "130.00",
       total_reserve_amount: "0",

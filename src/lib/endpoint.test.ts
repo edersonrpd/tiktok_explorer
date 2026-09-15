@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildOrderEndpoint,
   buildProductEndpoint,
-  buildStatementEndpoint,
+  buildTransactionEndpoint,
   cleanProductId,
+  buildStatementEndpoint,
   cleanStatementId,
   detectResourceKind,
   MAX_ORDER_IDS,
@@ -88,14 +89,41 @@ describe("buildOrderEndpoint", () => {
   });
 });
 
+describe("buildTransactionEndpoint", () => {
+  it("monta o endpoint a partir do código do pedido", () => {
+    expect(buildTransactionEndpoint("5793990727963214852")).toEqual({
+      ok: true,
+      path: "/finance/202501/orders/5793990727963214852/statement_transactions",
+    });
+  });
+
+  it("ignora espaços em volta do código", () => {
+    const result = buildTransactionEndpoint("  5793990727963214852 \n");
+    expect(result.ok && result.path).toBe(
+      "/finance/202501/orders/5793990727963214852/statement_transactions",
+    );
+  });
+
+  it("recusa código vazio", () => {
+    expect(buildTransactionEndpoint("   ").ok).toBe(false);
+  });
+
+  it("recusa código com letras ou símbolos", () => {
+    expect(buildTransactionEndpoint("579399abc").ok).toBe(false);
+  });
+});
+
 describe("detectResourceKind", () => {
-  it("reconhece produto e pedido pelo path", () => {
+  it("reconhece produto, pedido e transações pelo path", () => {
     expect(detectResourceKind("/product/202309/products/1")).toBe("product");
     expect(detectResourceKind("/order/202507/orders")).toBe("order");
+    expect(
+      detectResourceKind("/finance/202501/orders/5793990727963214852/statement_transactions"),
+    ).toBe("transaction");
   });
 
   it("classifica endpoints desconhecidos como other", () => {
-    expect(detectResourceKind("/finance/202309/statements")).toBe("other");
+    expect(detectResourceKind("/something/202309/else")).toBe("other");
   });
 });
 
@@ -112,23 +140,6 @@ describe("limite de IDs por chamada", () => {
     const result = buildOrderEndpoint(many(MAX_ORDER_IDS + 1));
     expect(result.ok).toBe(false);
     expect(!result.ok && result.reason).toContain("50");
-  });
-});
-
-describe("versões do endpoint de pedidos", () => {
-  it("usa a 202507 por padrão", () => {
-    const r = buildOrderEndpoint("576461413038785752");
-    expect(r.ok && r.path).toBe("/order/202507/orders?ids=576461413038785752");
-  });
-
-  it("monta a 202309 quando escolhida", () => {
-    const r = buildOrderEndpoint("576461413038785752", "202309");
-    expect(r.ok && r.path).toBe("/order/202309/orders?ids=576461413038785752");
-  });
-
-  it("reconhece as duas versões como pedido", () => {
-    expect(detectResourceKind("/order/202309/orders")).toBe("order");
-    expect(detectResourceKind("/order/202507/orders")).toBe("order");
   });
 });
 
@@ -167,8 +178,7 @@ describe("buildStatementEndpoint", () => {
   });
 
   it("recusa page_token com caracteres que indicam quebra no copiar/colar", () => {
-    const result = buildStatementEndpoint("7238804564097517339", { pageToken: "abc def" });
-    expect(result.ok).toBe(false);
+    expect(buildStatementEndpoint("7238804564097517339", { pageToken: "abc def" }).ok).toBe(false);
   });
 
   it("ignora page_token vazio (primeira página)", () => {
@@ -202,14 +212,13 @@ describe("cleanStatementId", () => {
   });
 });
 
-describe("detectResourceKind — extrato", () => {
-  it("reconhece as transações do extrato", () => {
+describe("detectResourceKind — os dois endpoints de finanças", () => {
+  it("separa transações do pedido das transações do extrato", () => {
+    expect(
+      detectResourceKind("/finance/202501/orders/5793990727963214852/statement_transactions"),
+    ).toBe("transaction");
     expect(
       detectResourceKind("/finance/202501/statements/7238804564097517339/statement_transactions"),
     ).toBe("statement");
-  });
-
-  it("mantém a listagem de extratos como other (sem exibição dedicada)", () => {
-    expect(detectResourceKind("/finance/202501/statements")).toBe("other");
   });
 });

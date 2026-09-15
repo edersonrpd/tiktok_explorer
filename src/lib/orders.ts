@@ -1,4 +1,5 @@
 import type { OrderLineItem } from "../types/tiktok";
+import { addMoney, moneyOrZero, parseMoney, ZERO, type Money } from "./money";
 
 /**
  * Agrupamento dos itens do pedido por SKU.
@@ -15,10 +16,18 @@ export interface GroupedLineItem {
   quantity: number;
   productName: string | undefined;
   skuName: string | undefined;
+  skuImage: string | undefined;
   sellerSku: string | undefined;
   skuId: string | undefined;
   salePrice: string | undefined;
+  /** Preço de tabela da unidade, antes dos descontos. */
+  originalPrice: string | undefined;
   currency: string | undefined;
+  /** Somas do grupo, para o extrato: preço cheio, preço de venda e descontos. */
+  originalTotal: Money;
+  saleTotal: Money;
+  sellerDiscountTotal: Money;
+  platformDiscountTotal: Money;
   /** Unidades do mesmo SKU saíram com preços diferentes (raro, mas possível). */
   priceVaries: boolean;
   /** Status distintos entre as unidades, na ordem de aparição. */
@@ -48,10 +57,16 @@ export function groupLineItems(items: OrderLineItem[]): GroupedLineItem[] {
         quantity: 1,
         productName: item.product_name,
         skuName: item.sku_name,
+        skuImage: item.sku_image,
         sellerSku: item.seller_sku,
         skuId: item.sku_id,
         salePrice: item.sale_price,
+        originalPrice: item.original_price,
         currency: item.currency,
+        originalTotal: parseMoney(item.original_price) ?? moneyOrZero(item.sale_price),
+        saleTotal: moneyOrZero(item.sale_price),
+        sellerDiscountTotal: moneyOrZero(item.seller_discount),
+        platformDiscountTotal: moneyOrZero(item.platform_discount),
         priceVaries: false,
         statuses: status !== undefined && status !== "" ? [status] : [],
       });
@@ -59,6 +74,13 @@ export function groupLineItems(items: OrderLineItem[]): GroupedLineItem[] {
     }
 
     existing.quantity += 1;
+    existing.originalTotal = addMoney(
+      existing.originalTotal,
+      parseMoney(item.original_price) ?? moneyOrZero(item.sale_price),
+    );
+    existing.saleTotal = addMoney(existing.saleTotal, parseMoney(item.sale_price));
+    existing.sellerDiscountTotal = addMoney(existing.sellerDiscountTotal, parseMoney(item.seller_discount));
+    existing.platformDiscountTotal = addMoney(existing.platformDiscountTotal, parseMoney(item.platform_discount));
     if (item.sale_price !== existing.salePrice) existing.priceVaries = true;
     if (status !== undefined && status !== "" && !existing.statuses.includes(status)) {
       existing.statuses.push(status);
@@ -71,4 +93,30 @@ export function groupLineItems(items: OrderLineItem[]): GroupedLineItem[] {
 /** Total de unidades do pedido (soma das linhas, já que cada linha é 1 unidade). */
 export function totalUnits(items: OrderLineItem[]): number {
   return items.length;
+}
+
+/** Totais monetários das linhas — usados para conferir contra `payment`. */
+export interface LineItemTotals {
+  original: Money;
+  sale: Money;
+  sellerDiscount: Money;
+  platformDiscount: Money;
+}
+
+export function sumLineItems(items: OrderLineItem[]): LineItemTotals {
+  const totals: LineItemTotals = {
+    original: ZERO,
+    sale: ZERO,
+    sellerDiscount: ZERO,
+    platformDiscount: ZERO,
+  };
+
+  for (const item of items) {
+    totals.original = addMoney(totals.original, parseMoney(item.original_price) ?? moneyOrZero(item.sale_price));
+    totals.sale = addMoney(totals.sale, parseMoney(item.sale_price));
+    totals.sellerDiscount = addMoney(totals.sellerDiscount, parseMoney(item.seller_discount));
+    totals.platformDiscount = addMoney(totals.platformDiscount, parseMoney(item.platform_discount));
+  }
+
+  return totals;
 }

@@ -1,8 +1,14 @@
-import type {
-  FeeTaxBreakdown,
-  StatementTransaction,
-  StatementTransactionsData,
-} from "../types/tiktok";
+import type { StatementTransaction, StatementTransactionsData } from "../types/tiktok";
+import {
+  addMoney,
+  isZero,
+  moneyEquals,
+  moneyOrZero,
+  parseMoney,
+  subtractMoney,
+  ZERO,
+  type Money,
+} from "./money";
 
 /**
  * Leitura do extrato de repasses (Get Transactions by Statement).
@@ -11,8 +17,9 @@ import type {
  *
  * 1. Todo valor monetário vem como STRING — inclusive negativos, zeros e,
  *    no exemplo da própria documentação, com espaço sobrando ("0 ").
- *    Somar isso direto em JavaScript concatena texto, então toda leitura
- *    passa por `parseAmount`, que devolve `null` quando não há valor.
+ *    Somar com `Number` acumularia erro binário e o total deixaria de
+ *    bater por centavos, justamente a conferência que a tela existe para
+ *    fazer, então tudo passa por `money.ts` (inteiros em escala 4).
  *
  * 2. O detalhamento tem cerca de 70 campos (taxas de programas, impostos
  *    de mercados específicos), e num extrato brasileiro quase todos vêm
@@ -20,82 +27,59 @@ import type {
  *    importam, então `nonZeroEntries` filtra o que é diferente de zero.
  */
 
-/** Rótulo em português para um campo do detalhamento. */
+/** Uma linha do detalhamento, já convertida e rotulada. */
 export interface AmountEntry {
   field: string;
   label: string;
-  value: number;
+  value: Money;
   /** Valor bruto, como veio da API (é ele que reconcilia com a planilha). */
   raw: string;
 }
 
 /**
- * Converte o valor da API em número. Aceita espaços em volta e devolve
- * `null` para ausente/vazio/ilegível — `null` é "não veio", diferente de
- * zero, que é "veio e é zero".
- */
-export function parseAmount(value: string | undefined): number | null {
-  if (value === undefined) return null;
-  const trimmed = value.trim();
-  if (trimmed === "") return null;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-/** Soma tratando ausentes como zero. */
-export function sumAmounts(values: Array<string | undefined>): number {
-  return values.reduce<number>((total, value) => total + (parseAmount(value) ?? 0), 0);
-}
-
-/**
  * Entradas com valor diferente de zero, em ordem decrescente de impacto
- * (maior valor absoluto primeiro). Campos sem valor ou zerados somem.
+ * (maior valor absoluto primeiro). Campos ausentes, ilegíveis ou zerados
+ * somem. `labelFor` traduz o nome técnico do campo.
  */
 export function nonZeroEntries(
   // `object` e não `Record<string, unknown>`: as interfaces do
   // detalhamento não têm index signature, então só esta forma aceita
   // passá-las direto, sem cast.
   source: object | undefined,
-  labels: Record<string, string>,
+  labelFor: (field: string) => string,
 ): AmountEntry[] {
   if (source === undefined) return [];
 
   const entries: AmountEntry[] = [];
   for (const [field, raw] of Object.entries(source)) {
     if (typeof raw !== "string") continue; // ignora objetos aninhados
-    const value = parseAmount(raw);
-    if (value === null || value === 0) continue;
-    entries.push({ field, label: labels[field] ?? field, value, raw: raw.trim() });
+    const value = parseMoney(raw);
+    if (value === undefined || isZero(value)) continue;
+    entries.push({ field, label: labelFor(field), value, raw: raw.trim() });
   }
 
   return entries.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
 }
 
-/** Quantos campos do detalhamento vieram zerados (contexto do filtro acima). */
-export function zeroFieldCount(source: object | undefined): number {
+/**
+ * Quantos campos do detalhamento `nonZeroEntries` escondeu — zerados ou
+ * vazios. Serve para a tela dizer o que deixou de fora, em vez de o
+ * usuário se perguntar se o campo existe e sumiu.
+ */
+export function hiddenFieldCount(source: object | undefined): number {
   if (source === undefined) return 0;
-  return Object.values(source).filter((raw) => typeof raw === "string" && parseAmount(raw) === 0)
-    .length;
-}
-
-/** Junta taxas e impostos numa lista só, marcando de onde cada uma veio. */
-export function feeTaxEntries(
-  breakdown: FeeTaxBreakdown | undefined,
-  labels: Record<string, string>,
-): { fees: AmountEntry[]; taxes: AmountEntry[] } {
-  return {
-    fees: nonZeroEntries(breakdown?.fee, labels),
-    taxes: nonZeroEntries(breakdown?.tax, labels),
-  };
+  return Object.values(source).filter(
+    (raw) => typeof raw === "string" && isZero(parseMoney(raw)),
+  ).length;
 }
 
 /** Totais por tipo de transação — a visão que responde "no que foi o desconto". */
 export interface TypeTotal {
   type: string;
   count: number;
-  settlement: number;
-  adjustment: number;
-  reserve: number;
+  settlement: Money;
+  adjustment: Money;
+  reserve: Money;
 }
 
 export function totalsByType(transactions: StatementTransaction[]): TypeTotal[] {
@@ -106,14 +90,14 @@ export function totalsByType(transactions: StatementTransaction[]): TypeTotal[] 
     const current = totals.get(type) ?? {
       type,
       count: 0,
-      settlement: 0,
-      adjustment: 0,
-      reserve: 0,
+      settlement: ZERO,
+      adjustment: ZERO,
+      reserve: ZERO,
     };
     current.count += 1;
-    current.settlement += parseAmount(tx.settlement_amount) ?? 0;
-    current.adjustment += parseAmount(tx.adjustment_amount) ?? 0;
-    current.reserve += parseAmount(tx.reserve_amount) ?? 0;
+    current.settlement = addMoney(current.settlement, parseMoney(tx.settlement_amount));
+    current.adjustment = addMoney(current.adjustment, parseMoney(tx.adjustment_amount));
+    current.reserve = addMoney(current.reserve, parseMoney(tx.reserve_amount));
     totals.set(type, current);
   }
 
@@ -122,7 +106,7 @@ export function totalsByType(transactions: StatementTransaction[]): TypeTotal[] 
 
 /**
  * Conferência das fórmulas publicadas na documentação, aplicada aos
- * valores desta página:
+ * valores desta resposta:
  *
  *   total_settlement = total_revenue - total_shipping - total_fee_tax - total_adjustment
  *   payable          = total_settlement + total_reserve
@@ -133,43 +117,41 @@ export function totalsByType(transactions: StatementTransaction[]): TypeTotal[] 
  */
 export interface FormulaCheck {
   label: string;
-  expected: number;
-  returned: number | null;
+  expected: Money;
+  returned: Money | undefined;
   matches: boolean;
 }
 
-/** Diferença tolerada por arredondamento de centavos. */
-const TOLERANCE = 0.01;
-
 export function checkStatementFormulas(data: StatementTransactionsData): FormulaCheck[] {
   const breakdown = data.total_settlement_breakdown;
-  const settlement = parseAmount(data.total_settlement_amount);
-  const reserve = parseAmount(data.total_reserve_amount);
-  const payable = parseAmount(data.payable_amount);
+  const settlement = parseMoney(data.total_settlement_amount);
+  const reserve = parseMoney(data.total_reserve_amount);
+  const payable = parseMoney(data.payable_amount);
 
   const checks: FormulaCheck[] = [];
 
   if (breakdown !== undefined) {
-    const expected =
-      (parseAmount(breakdown.total_revenue_amount) ?? 0) -
-      (parseAmount(breakdown.total_shipping_cost_amount) ?? 0) -
-      (parseAmount(breakdown.total_fee_tax_amount) ?? 0) -
-      (parseAmount(breakdown.total_adjustment_amount) ?? 0);
+    const expected = subtractMoney(
+      moneyOrZero(breakdown.total_revenue_amount),
+      moneyOrZero(breakdown.total_shipping_cost_amount),
+      moneyOrZero(breakdown.total_fee_tax_amount),
+      moneyOrZero(breakdown.total_adjustment_amount),
+    );
     checks.push({
       label: "receita − frete − taxas/impostos − ajustes = total repassado",
       expected,
       returned: settlement,
-      matches: settlement !== null && Math.abs(expected - settlement) <= TOLERANCE,
+      matches: settlement !== undefined && moneyEquals(expected, settlement),
     });
   }
 
-  if (settlement !== null && reserve !== null) {
-    const expected = settlement + reserve;
+  if (settlement !== undefined && reserve !== undefined) {
+    const expected = addMoney(settlement, reserve);
     checks.push({
       label: "total repassado + reserva = valor a pagar",
       expected,
       returned: payable,
-      matches: payable !== null && Math.abs(expected - payable) <= TOLERANCE,
+      matches: payable !== undefined && moneyEquals(expected, payable),
     });
   }
 

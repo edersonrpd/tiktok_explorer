@@ -31,6 +31,7 @@ export const SIGNATURE_PARAMS = ["shop_cipher", "app_key", "timestamp", "sign"] 
 const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
   order: ["ids"],
+  transaction: [],
   statement: ["sort_field"],
   other: [],
 };
@@ -44,6 +45,7 @@ const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
 const OPTIONAL_ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
   order: [],
+  transaction: [],
   statement: ["page_size", "sort_order", "page_token"],
   other: [],
 };
@@ -188,10 +190,9 @@ export function decodeSeparators(input: string): string {
 
 /**
  * Detecta placeholder não substituído (cru ou percent-encoded) — o
- * `{product_id}` do endpoint de anúncio, o `{statement_id}` do extrato ou
- * qualquer outro no mesmo formato. Uma URL assinada de verdade nunca tem
- * chaves, então reconhecer o formato inteiro cobre endpoints futuros sem
- * precisar listar nome por nome.
+ * `{product_id}` do anúncio, o `{statement_id}` do extrato ou qualquer
+ * outro no mesmo formato. Uma URL assinada de verdade nunca tem chaves,
+ * então reconhecer o formato cobre endpoints futuros sem listar nomes.
  */
 export function findPlaceholder(pathWithQuery: string): string | null {
   const raw = /\{[a-z0-9_]+\}/i.exec(pathWithQuery);

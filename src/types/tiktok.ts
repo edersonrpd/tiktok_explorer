@@ -152,6 +152,8 @@ export interface OrderPayment {
   original_shipping_fee?: string;
   shipping_fee_seller_discount?: string;
   shipping_fee_platform_discount?: string;
+  /** Desconto de frete dividido entre plataforma e vendedor. */
+  shipping_fee_cofunded_discount?: string;
   tax?: string;
   product_tax?: string;
   shipping_fee_tax?: string;
@@ -223,6 +225,9 @@ export interface OrderLineItem {
   shipping_provider_name?: string;
   shipping_provider_id?: string;
   is_gift?: boolean;
+  gift_retail_price?: string;
+  shipping_vat_amount?: string;
+  shipping_vat_rate?: string;
   rts_time?: number;
   item_tax?: ItemTax[];
   combined_listing_skus?: CombinedListingSku[];
@@ -265,6 +270,16 @@ export interface Order {
   delivery_option_name?: string;
   fulfillment_type?: string;
   warehouse_id?: string;
+  delivery_option_id?: string;
+  has_updated_recipient_address?: boolean;
+  /** SLAs do pedido (epoch em segundos). */
+  rts_sla_time?: number;
+  tts_sla_time?: number;
+  cancel_order_sla_time?: number;
+  collection_due_time?: number;
+  /** CNPJ da entidade do marketplace, usado na nota fiscal. */
+  channel_entity_national_registry_id?: string;
+  need_upload_invoice?: string;
   cancel_reason?: string;
   cancellation_initiator?: string;
   is_buyer_request_cancel?: boolean;
@@ -275,6 +290,13 @@ export interface Order {
   replaced_order_id?: string;
   split_or_combine_tag?: string;
   payment_method_name?: string;
+  payment_method_code?: string;
+  /** Código da autorização do pagamento (o "E2085..." do Pix, por exemplo). */
+  payment_auth_code?: string;
+  /** CPF do comprador — obrigatório em pedidos no Brasil. */
+  cpf?: string;
+  /** Nome completo associado ao CPF, como declarado na nota fiscal. */
+  cpf_name?: string;
   commerce_platform?: string;
   order_type?: string;
   handling_duration?: HandlingDuration;
@@ -290,50 +312,23 @@ export interface OrderListData {
 
 export type OrderResponse = TikTokApiResponse<OrderListData>;
 
-/* -------------------------------------------------------------------------
- * GET /finance/202501/statements/{statement_id}/statement_transactions
- * (Get Transactions by Statement)
- *
- * TODO VALOR MONETÁRIO É STRING nesta API — inclusive os negativos e o
- * zero ("0"). Nunca são números: a plataforma evita ponto flutuante e
- * devolve o decimal exato. Alguns campos voltam vazios (ou com espaço
- * sobrando, como "0 " no exemplo da documentação) quando não se aplicam
- * ao mercado da loja, daí tudo ser opcional e a leitura passar por
- * `parseAmount` (src/lib/statements.ts).
- * ---------------------------------------------------------------------- */
+/* ------------------------------------------------------------------------ */
+/* Transações por pedido — GET /finance/202501/orders/{id}/statement_transactions */
+/* ------------------------------------------------------------------------ */
 
-/** Parcelas que compõem `revenue_amount`. */
 export interface RevenueBreakdown {
   subtotal_before_discount_amount?: string;
-  refund_subtotal_before_discount_amount?: string;
   seller_discount_amount?: string;
+  refund_subtotal_before_discount_amount?: string;
   seller_discount_refund_amount?: string;
   cod_service_fee_amount?: string;
   refund_cod_service_fee_amount?: string;
   distant_item_fee_amount?: string;
 }
 
-/** Custos de referência do frete — NÃO somam em `shipping_cost_amount`. */
-export interface ShippingSupplementaryComponent {
-  platform_shipping_fee_discount_amount?: string;
-  promo_shipping_incentive_amount?: string;
-  shipping_fee_subsidy_amount?: string;
-  seller_shipping_fee_discount_amount?: string;
-  customer_shipping_fee_offset_amount?: string;
-  fbm_shipping_cost_amount?: string;
-  fbt_shipping_cost_amount?: string;
-  fbt_fulfillment_fee_amount?: string;
-  /** Descontinuado: usar shipping_cost_breakdown.fbt_fulfillment_fee_reimbursement_amount. */
-  fbt_fulfillment_fee_reimbursement_amount?: string;
-  return_refund_subsidy_amount?: string;
-  refunded_customer_shipping_fee_amount?: string;
-  customer_shipping_fee?: string;
-  refund_customer_shipping_fee?: string;
-}
-
-/** Parcelas que compõem `shipping_cost_amount`. */
 export interface ShippingCostBreakdown {
   actual_shipping_fee_amount?: string;
+  /** Só documentado no Get Transactions by Statement. */
   international_leg_logistics_amount?: string;
   shipping_fee_discount_amount?: string;
   customer_paid_shipping_fee_amount?: string;
@@ -347,6 +342,7 @@ export interface ShippingCostBreakdown {
   seller_self_shipping_service_fee_amount?: string;
   return_shipping_fee_paid_buyer_amount?: string;
   failed_delivery_subsidy_amount?: string;
+  /** Só documentado no Get Transactions by Statement. */
   shipping_fee_guarantee_reimbursement?: string;
   fbt_free_shipping_fee_amount?: string;
   free_return_subsidy_amount?: string;
@@ -356,107 +352,67 @@ export interface ShippingCostBreakdown {
   fbt_overall_merchant_subsidy?: string;
   fbt_key_merchant_subsidy?: string;
   tiktok_shop_shipping_incentive_amount?: string;
-  supplementary_component?: ShippingSupplementaryComponent;
+  /** Custos suplementares que não contribuem diretamente para shipping_cost_amount. */
+  supplementary_component?: Record<string, string>;
 }
 
-/** Tarifas cobradas pela plataforma (parte de `fee_tax_amount`). */
-export interface TransactionFeeBreakdown {
-  platform_commission_amount?: string;
-  referral_fee_amount?: string;
-  refund_administration_fee_amount?: string;
-  transaction_fee_amount?: string;
-  credit_card_handling_fee_amount?: string;
-  affiliate_commission_amount?: string;
-  affiliate_commission_amount_before_pit?: string;
-  affiliate_partner_commission_amount?: string;
-  affiliate_ads_commission_amount?: string;
-  sfp_service_fee_amount?: string;
-  live_specials_fee_amount?: string;
-  bonus_cashback_service_fee_amount?: string;
-  mall_service_fee_amount?: string;
-  voucher_xtra_service_fee_amount?: string;
-  flash_sales_service_fee_amount?: string;
-  cofunded_promotion_service_fee_amount?: string;
-  pre_order_service_fee_amount?: string;
-  tsp_commission_amount?: string;
-  dt_handling_fee_amount?: string;
-  epr_pob_service_fee_amount?: string;
-  seller_paylater_handling_fee_amount?: string;
-  fee_per_item_sold_amount?: string;
-  cofunded_creator_bonus_amount?: string;
-  dynamic_commission_amount?: string;
-  external_affiliate_marketing_fee_amount?: string;
-  vn_fix_infrastructure_fee?: string;
-  affiliate_commission_deposit?: string;
-  affiliate_commission_release?: string;
-  tap_shop_ads_commission?: string;
-  shipping_fee_guarantee_service_fee?: string;
-  installation_service_fee?: string;
-  campaign_resource_fee?: string;
-  platform_special_service_fee_amount?: string;
-  smart_promotion_fee_amount?: string;
-  gmv_max_ad_fee_amount?: string;
-  platform_semi_managed_commission_fee?: string;
-  platform_semi_managed_commission_fee_tax?: string;
-  campaign_period_fee_cfp_amount?: string;
-  campaign_period_fee_sp_amount?: string;
-  campaign_period_fee_sp_tax_amount?: string;
-  campaign_period_fee_cfp_tax_amount?: string;
-  seller_growth_fee_amount?: string;
-  category_led_campaign_fee_amount?: string;
-  category_led_campaign_fee_tax_amount?: string;
-  brand_amplification_program_commission?: string;
-  brand_amplification_program_fee_tax?: string;
-  brand_campaign_fee?: string;
-  brand_campaign_fee_tax?: string;
-  failed_delivery_shipping_fee?: string;
-  buyer_fault_return_shipping_fee?: string;
-  insurance_fee?: string;
-  gmv_max_coupon_fee?: string;
-  cps_shop_ads_commission_tax_amount?: string;
-  shipping_insurance_fee_tax_amount?: string;
-}
-
-/** Impostos recolhidos pela plataforma (parte de `fee_tax_amount`). */
-export interface TransactionTaxBreakdown {
-  vat_amount?: string;
-  import_vat_amount?: string;
-  customs_duty_amount?: string;
-  customs_clearance_amount?: string;
-  sst_amount?: string;
-  gst_amount?: string;
-  iva_amount?: string;
-  isr_amount?: string;
-  anti_dumping_duty_amount?: string;
-  local_vat_amount?: string;
-  pit_amount?: string;
-  sales_tax_referral_fee_amount?: string;
-  smart_promotion_fee_tax_amount?: string;
-  cedular_tax?: string;
-}
-
+/** Dezenas de fees e taxas específicas de mercado — ver documentação para o significado de cada uma. */
 export interface FeeTaxBreakdown {
-  fee?: TransactionFeeBreakdown;
-  tax?: TransactionTaxBreakdown;
+  fee?: Record<string, string>;
+  tax?: Record<string, string>;
 }
 
-/** Valores de referência da transação — NÃO somam no repasse. */
-export interface TransactionSupplementaryComponent {
-  customer_payment_amount?: string;
-  customer_refund_amount?: string;
-  platform_discount_amount?: string;
-  platform_discount_refund_amount?: string;
-  seller_cofunded_discount_amount?: string;
-  seller_cofunded_discount_refund_amount?: string;
-  platform_cofunded_discount_amount?: string;
-  platform_cofunded_discount_refund_amount?: string;
-  retail_delivery_fee_amount?: string;
-  retail_delivery_fee_payment_amount?: string;
-  retail_delivery_fee_refund_amount?: string;
-  sales_tax_amount?: string;
-  sales_tax_payment_amount?: string;
-  sales_tax_refund_amount?: string;
+export interface SkuTransaction {
+  sku_id?: string;
+  sku_name?: string;
+  statement_id?: string;
+  product_name?: string;
+  quantity?: string;
+  settlement_amount?: string;
+  revenue_amount?: string;
+  revenue_breakdown?: RevenueBreakdown;
+  shipping_cost_amount?: string;
+  shipping_cost_breakdown?: ShippingCostBreakdown;
+  fee_tax_amount?: string;
+  fee_tax_breakdown?: FeeTaxBreakdown;
 }
+
+export interface TransactionsByOrderData {
+  order_id: string;
+  order_create_time?: number;
+  currency?: string;
+  revenue_amount?: string;
+  fee_and_tax_amount?: string;
+  shipping_cost_amount?: string;
+  settlement_amount?: string;
+  sku_transactions?: SkuTransaction[];
+  total_count?: number;
+}
+
+export type TransactionsByOrderResponse = TikTokApiResponse<TransactionsByOrderData>;
+
+/* ------------------------------------------------------------------------ */
+/* Transações por extrato                                                     */
+/* GET /finance/202501/statements/{id}/statement_transactions                 */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * O irmão deste endpoint (transações por PEDIDO, acima) devolve os mesmos
+ * blocos de detalhamento — `RevenueBreakdown`, `ShippingCostBreakdown` e
+ * `FeeTaxBreakdown` são reaproveitados aqui em vez de duplicados.
+ *
+ * A diferença está no nível: lá cada linha é um SKU de um pedido; aqui
+ * cada linha é um pedido, um ajuste ou uma movimentação de reserva do
+ * repasse inteiro — e vem com o cabeçalho do extrato (valor a pagar,
+ * reserva, totais) que o outro endpoint não tem.
+ *
+ * TODO VALOR MONETÁRIO É STRING, inclusive negativos e zeros, e às vezes
+ * com espaço sobrando ("0 " aparece no exemplo da documentação). A
+ * leitura passa sempre por `parseMoney` (src/lib/money.ts).
+ */
+
+/** Valores de referência da transação — NÃO entram no cálculo do repasse. */
+export type TransactionSupplementaryComponent = Record<string, string>;
 
 /**
  * Uma linha do extrato. Cada transação é UM pedido, UM ajuste ou UMA
@@ -464,7 +420,7 @@ export interface TransactionSupplementaryComponent {
  */
 export interface StatementTransaction {
   id: string;
-  /** ORDER, RESERVE ou um dos tipos de ajuste (ver src/lib/statements.ts). */
+  /** ORDER, RESERVE ou um dos tipos de ajuste (ver src/lib/statementLabels.ts). */
   type?: string;
   order_id?: string;
   order_create_time?: number;
@@ -496,7 +452,6 @@ export interface StatementSettlementBreakdown {
   total_adjustment_amount?: string;
 }
 
-/** `data` de GET /finance/202501/statements/{id}/statement_transactions. */
 export interface StatementTransactionsData {
   next_page_token?: string;
   /** ID do extrato (o mesmo informado no path). */

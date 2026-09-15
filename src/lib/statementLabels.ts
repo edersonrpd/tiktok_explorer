@@ -3,9 +3,22 @@
  *
  * A documentação do endpoint tem ~70 campos de detalhamento com nomes
  * longos em inglês (`cofunded_promotion_service_fee_amount`). Traduzir na
- * exibição é o que torna a tela útil para quem confere o repasse. Campos
- * sem tradução aparecem com o nome original — nunca somem da tela.
+ * exibição é o que torna a tela útil para quem confere o repasse.
+ *
+ * Campo sem tradução cai em `prettyFieldLabel` — o mesmo tratamento que a
+ * tela de transações por pedido dá a todos os campos —, então um campo
+ * novo da API aparece legível em vez de sumir da tela.
  */
+
+import { prettyFieldLabel } from "./format";
+
+/**
+ * Transforma um mapa de rótulos em função de tradução com fallback.
+ * Cada bloco do detalhamento passa o seu mapa.
+ */
+export function labelFrom(map: Record<string, string>): (field: string) => string {
+  return (field) => map[field] ?? prettyFieldLabel(field);
+}
 
 /** Tipos de transação (campo `type`). */
 export const TRANSACTION_TYPE_LABELS: Record<string, string> = {

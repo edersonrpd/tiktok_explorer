@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StatementView } from "./StatementView";
+import { formatMoney, parseMoney } from "../lib/money";
 import type { StatementTransactionsData } from "../types/tiktok";
 
 /**
@@ -186,6 +187,13 @@ const SAMPLE: StatementTransactionsData = {
     ]
   };
 
+/**
+ * O valor formatado sai de `formatMoney`, que usa `Intl` — comparar com
+ * uma string fixa quebraria conforme a versão do ICU. O teste checa o
+ * mesmo formatador que a tela usa.
+ */
+const money = (raw: string) => formatMoney(parseMoney(raw), "GBP");
+
 const QUERY = { statementId: "7238804564097517339", pageSize: 20, sortOrder: "DESC" as const };
 
 describe("StatementView", () => {
@@ -193,17 +201,18 @@ describe("StatementView", () => {
 
   it("mostra os totais do extrato", () => {
     expect(html).toContain("Extrato 7238804564097517339");
-    expect(html).toContain("150,00 GBP"); // payable_amount
-    expect(html).toContain("130,00 GBP"); // total_settlement_amount
+    expect(html).toContain(money("150")); // payable_amount
+    expect(html).toContain(money("130")); // total_settlement_amount
   });
 
   it("aponta a divergência da fórmula do exemplo em vez de escondê-la", () => {
     // 100 − 120 − 20 − 0 = 40, mas o exemplo declara 130.
     expect(html).toContain("Conferência das fórmulas");
-    expect(html).toContain("calculado -40,00 GBP");
+    expect(html).toContain(`calculado ${money("-40")}`);
   });
 
-  it("monta o caminho da próxima página com o page_token literal", () => {
+  it("monta a URL da próxima página com o page_token literal", () => {
+    expect(html).toContain("https://open-api.tiktokglobalshop.com/finance/202501/statements/");
     expect(html).toContain("page_token=6AsPQsUMvH3RkchNUPPh22NROHkE0D8pmq/N5M1kHYcZmtRyv9aVrNv65W7Q6tFA+7D1ud64MPNz5OaT");
     expect(html).toContain("page_size=20");
     expect(html).toContain("sort_field=order_create_time");
@@ -212,6 +221,6 @@ describe("StatementView", () => {
   it("lista a transação com os valores traduzidos", () => {
     expect(html).toContain("Pedido");
     expect(html).toContain("576463220456522968");
-    expect(html).toContain("200,00 GBP"); // revenue_amount
+    expect(html).toContain(money("200")); // revenue_amount
   });
 });
