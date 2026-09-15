@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchResource, type FetchFailure } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
-import { detectResourceKind, type ResourceKind } from "./lib/endpoint";
+import {
+  cleanStatementId,
+  detectResourceKind,
+  STATEMENT_SORT_ORDERS,
+  type ResourceKind,
+  type StatementSortOrder,
+} from "./lib/endpoint";
 import { parseQueryParams, signatureAgeSeconds, type NormalizedUrl } from "./lib/signedUrl";
-import type { Order, OrderListData, Product, TikTokApiResponse } from "./types/tiktok";
+import type {
+  Order,
+  OrderListData,
+  Product,
+  StatementTransactionsData,
+  TikTokApiResponse,
+} from "./types/tiktok";
 import { EndpointBuilder } from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
 import { ErrorDisplay } from "./components/ErrorDisplay";
@@ -14,6 +26,7 @@ import { DescriptionCard } from "./components/DescriptionCard";
 import { AttributesCard, PackageCard } from "./components/AttributesCard";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { OrderView } from "./components/OrderView";
+import { StatementView, type StatementPageQuery } from "./components/StatementView";
 import { RawJson } from "./components/RawJson";
 import { HistoryList } from "./components/HistoryList";
 import { Card } from "./components/ui";
@@ -25,6 +38,7 @@ const HISTORY_LIMIT = 10;
 export type LoadedResource =
   | { kind: "product"; product: Product }
   | { kind: "order"; orders: Order[]; requestedIds: string[] }
+  | { kind: "statement"; statement: StatementTransactionsData; query: StatementPageQuery }
   | { kind: "other" };
 
 export interface HistoryEntry {
@@ -53,6 +67,26 @@ function requestedOrderIds(normalized: NormalizedUrl): string[] {
   const param = parseQueryParams(normalized.rawQuery).find((p) => p.name === "ids");
   if (param === undefined) return [];
   return param.value.split(",").map((id) => id.trim()).filter((id) => id !== "");
+}
+
+/**
+ * Lê da URL consultada o que é preciso para montar a PRÓXIMA página do
+ * extrato: o ID do extrato (que está no path) e o page_size/sort_order
+ * usados aqui, para a página seguinte sair com os mesmos parâmetros.
+ * Leitura apenas — a URL enviada continua sendo a original.
+ */
+function statementPageQuery(normalized: NormalizedUrl): StatementPageQuery {
+  const params = parseQueryParams(normalized.rawQuery);
+  const pageSize = Number(params.find((p) => p.name === "page_size")?.value);
+  const sortOrder = params.find((p) => p.name === "sort_order")?.value;
+
+  return {
+    statementId: cleanStatementId(normalized.path),
+    pageSize: Number.isInteger(pageSize) && pageSize > 0 ? pageSize : undefined,
+    sortOrder: STATEMENT_SORT_ORDERS.includes(sortOrder as StatementSortOrder)
+      ? (sortOrder as StatementSortOrder)
+      : undefined,
+  };
 }
 
 export default function App() {
@@ -101,6 +135,12 @@ export default function App() {
         resource = { kind: "order", orders, requestedIds: requestedOrderIds(normalized) };
         label = `${orders.length} pedido(s)`;
         subtitle = orders.map((o) => o.id).join(", ") || "nenhum retornado";
+      } else if (kind === "statement") {
+        const statement = result.data as StatementTransactionsData;
+        const count = statement.transactions?.length ?? 0;
+        resource = { kind: "statement", statement, query: statementPageQuery(normalized) };
+        label = `Extrato ${statement.id ?? ""}`.trim();
+        subtitle = `${count} transação(ões)${statement.total_count !== undefined ? ` de ${statement.total_count}` : ""}`;
       } else {
         resource = { kind: "other" };
         label = "Resposta bruta";
@@ -144,7 +184,7 @@ export default function App() {
       <header className="border-b border-slate-200 bg-white px-6 py-3">
         <h1 className="text-base font-bold">TikTok Shop Viewer</h1>
         <p className="text-xs text-slate-500">
-          Consulta de anúncios e pedidos via URL pré-assinada — a query string nunca é modificada.
+          Consulta de anúncios, pedidos e extratos via URL pré-assinada — a query string nunca é modificada.
         </p>
       </header>
 
@@ -212,6 +252,13 @@ export default function App() {
                 <OrderView
                   orders={view.resource.orders}
                   requestedIds={view.resource.requestedIds}
+                />
+              )}
+
+              {view.resource.kind === "statement" && (
+                <StatementView
+                  data={view.resource.statement}
+                  query={view.resource.query}
                 />
               )}
 

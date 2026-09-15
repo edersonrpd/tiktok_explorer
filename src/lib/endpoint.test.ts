@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildOrderEndpoint,
   buildProductEndpoint,
+  buildStatementEndpoint,
   cleanProductId,
+  cleanStatementId,
   detectResourceKind,
   MAX_ORDER_IDS,
   parseOrderIds,
@@ -127,5 +129,87 @@ describe("versões do endpoint de pedidos", () => {
   it("reconhece as duas versões como pedido", () => {
     expect(detectResourceKind("/order/202309/orders")).toBe("order");
     expect(detectResourceKind("/order/202507/orders")).toBe("order");
+  });
+});
+
+describe("buildStatementEndpoint", () => {
+  it("monta o endpoint com sort_field obrigatório e os padrões da aplicação", () => {
+    expect(buildStatementEndpoint("7238804564097517339")).toEqual({
+      ok: true,
+      path:
+        "/finance/202501/statements/7238804564097517339/statement_transactions" +
+        "?page_size=100&sort_field=order_create_time&sort_order=DESC",
+    });
+  });
+
+  it("respeita page_size e sort_order informados", () => {
+    const result = buildStatementEndpoint("7238804564097517339", {
+      pageSize: 20,
+      sortOrder: "ASC",
+    });
+    expect(result.ok && result.path).toBe(
+      "/finance/202501/statements/7238804564097517339/statement_transactions" +
+        "?page_size=20&sort_field=order_create_time&sort_order=ASC",
+    );
+  });
+
+  it("acrescenta o page_token literal, sem re-encoding", () => {
+    const token = "6AsPQsUMvH3RkchNUPPh22NROHkE0D8pmq/N5M1kHYcZmtRyv9aVrNv65W7Q6tFA+7D1ud64MPNz5OaT";
+    const result = buildStatementEndpoint("7238804564097517339", { pageToken: token });
+    expect(result.ok && result.path).toContain(`page_token=${token}`);
+  });
+
+  it("recusa page_size fora da faixa 1..100", () => {
+    expect(buildStatementEndpoint("7238804564097517339", { pageSize: 0 }).ok).toBe(false);
+    expect(buildStatementEndpoint("7238804564097517339", { pageSize: 101 }).ok).toBe(false);
+    expect(buildStatementEndpoint("7238804564097517339", { pageSize: 1.5 }).ok).toBe(false);
+    expect(buildStatementEndpoint("7238804564097517339", { pageSize: Number.NaN }).ok).toBe(false);
+  });
+
+  it("recusa page_token com caracteres que indicam quebra no copiar/colar", () => {
+    const result = buildStatementEndpoint("7238804564097517339", { pageToken: "abc def" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("ignora page_token vazio (primeira página)", () => {
+    const result = buildStatementEndpoint("7238804564097517339", { pageToken: "   " });
+    expect(result.ok && result.path.includes("page_token")).toBe(false);
+  });
+
+  it("recusa código vazio ou não numérico", () => {
+    expect(buildStatementEndpoint("  ").ok).toBe(false);
+    expect(buildStatementEndpoint("7238abc").ok).toBe(false);
+  });
+});
+
+describe("cleanStatementId", () => {
+  it("pega o ID do meio do caminho, não o último segmento", () => {
+    expect(
+      cleanStatementId("/finance/202501/statements/7238804564097517339/statement_transactions"),
+    ).toBe("7238804564097517339");
+  });
+
+  it("aceita o ID puro", () => {
+    expect(cleanStatementId(" 7238804564097517339 ")).toBe("7238804564097517339");
+  });
+
+  it("extrai o ID de uma URL assinada inteira", () => {
+    expect(
+      cleanStatementId(
+        "https://open-api.tiktokglobalshop.com/finance/202501/statements/7238804564097517339/statement_transactions?app_key=k&sign=s",
+      ),
+    ).toBe("7238804564097517339");
+  });
+});
+
+describe("detectResourceKind — extrato", () => {
+  it("reconhece as transações do extrato", () => {
+    expect(
+      detectResourceKind("/finance/202501/statements/7238804564097517339/statement_transactions"),
+    ).toBe("statement");
+  });
+
+  it("mantém a listagem de extratos como other (sem exibição dedicada)", () => {
+    expect(detectResourceKind("/finance/202501/statements")).toBe("other");
   });
 });

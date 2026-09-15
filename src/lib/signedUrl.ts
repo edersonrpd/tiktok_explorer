@@ -24,18 +24,38 @@ export const SIGNATURE_PARAMS = ["shop_cipher", "app_key", "timestamp", "sign"] 
 
 /**
  * Parâmetros de negócio exigidos por endpoint, além dos de assinatura.
- * Em /order/.../orders os IDs vão na query (`ids`) e por isso são
- * assinados junto — precisam existir antes da assinatura.
+ * Em /order/.../orders os IDs vão na query (`ids`) e no extrato vai o
+ * `sort_field` — por irem na query, são assinados junto e precisam
+ * existir antes da assinatura.
  */
 const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
   order: ["ids"],
+  statement: ["sort_field"],
+  other: [],
+};
+
+/**
+ * Parâmetros que o endpoint aceita mas não exige. Não entram na contagem
+ * de obrigatórios; servem para o painel não marcar como "inesperado" algo
+ * que a documentação prevê — o extrato tem três deles (paginação e
+ * ordenação), e todos também são assinados.
+ */
+const OPTIONAL_ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
+  product: [],
+  order: [],
+  statement: ["page_size", "sort_order", "page_token"],
   other: [],
 };
 
 /** Todos os parâmetros esperados para o tipo de recurso detectado. */
 export function requiredParamsFor(kind: ResourceKind): string[] {
   return [...SIGNATURE_PARAMS, ...ENDPOINT_PARAMS[kind]];
+}
+
+/** Parâmetros aceitos porém opcionais para o tipo de recurso detectado. */
+export function optionalParamsFor(kind: ResourceKind): string[] {
+  return [...OPTIONAL_ENDPOINT_PARAMS[kind]];
 }
 
 /** Idade máxima (em segundos) do timestamp antes de considerarmos a assinatura provavelmente expirada. */
@@ -166,11 +186,22 @@ export function decodeSeparators(input: string): string {
   return `${path}?${query}`;
 }
 
-/** Detecta placeholder de product_id não substituído (cru ou percent-encoded). */
+/**
+ * Detecta placeholder não substituído (cru ou percent-encoded) — o
+ * `{product_id}` do endpoint de anúncio, o `{statement_id}` do extrato ou
+ * qualquer outro no mesmo formato. Uma URL assinada de verdade nunca tem
+ * chaves, então reconhecer o formato inteiro cobre endpoints futuros sem
+ * precisar listar nome por nome.
+ */
 export function findPlaceholder(pathWithQuery: string): string | null {
-  if (pathWithQuery.includes("{product_id}")) return "{product_id}";
-  const lower = pathWithQuery.toLowerCase();
-  if (lower.includes("%7bproduct_id%7d")) return "%7Bproduct_id%7D";
+  const raw = /\{[a-z0-9_]+\}/i.exec(pathWithQuery);
+  if (raw !== null) return raw[0];
+
+  // A entrada pode vir em qualquer caixa (%7b ou %7B); a exibição é
+  // sempre a mesma forma canônica, para não parecer outro problema.
+  const encoded = /%7b([a-z0-9_]+)%7d/i.exec(pathWithQuery);
+  if (encoded?.[1] !== undefined) return `%7B${encoded[1].toLowerCase()}%7D`;
+
   return null;
 }
 

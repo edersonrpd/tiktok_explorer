@@ -7,14 +7,18 @@
  * `sign`, `app_key`, `shop_cipher` e `timestamp` são acrescentados pelo
  * sistema que assina.
  *
- * DIFERENÇA IMPORTANTE ENTRE OS DOIS ENDPOINTS:
- * - Produto: o ID vai no PATH  → /product/202309/products/{id}
- * - Pedidos: os IDs vão na QUERY → /order/202507/orders?ids=a,b
+ * ONDE CADA CÓDIGO ENTRA:
+ * - Produto:  o ID vai no PATH  → /product/202309/products/{id}
+ * - Pedidos:  os IDs vão na QUERY → /order/202507/orders?ids=a,b
+ * - Extrato:  o ID vai no PATH e os parâmetros de paginação/ordenação
+ *   vão na QUERY →
+ *   /finance/202501/statements/{id}/statement_transactions?sort_field=...
  *
- * No caso de pedidos, `ids` faz parte da query e portanto é assinado
- * junto com os demais parâmetros. Ele precisa estar presente ANTES da
- * assinatura — acrescentar `ids` depois invalidaria o `sign` (erro
- * 106001). Por isso o passo 1 já entrega o caminho com `ids` embutido.
+ * Em pedidos e extrato há parâmetros de negócio na query (`ids`,
+ * `sort_field`, `page_size`, `sort_order`, `page_token`), que por isso são
+ * assinados junto com os demais. Eles precisam estar presentes ANTES da
+ * assinatura — acrescentar qualquer um depois invalidaria o `sign` (erro
+ * 106001). Por isso o passo 1 já entrega o caminho com a query embutida.
  */
 
 /** Versão do endpoint de produto da Open API (parte do path assinado). */
@@ -35,7 +39,7 @@ export const ORDER_API_VERSION: OrderApiVersion = "202507";
 export const MAX_ORDER_IDS = 50;
 
 /** Tipo de recurso que a aplicação sabe consultar e exibir. */
-export type ResourceKind = "product" | "order" | "other";
+export type ResourceKind = "product" | "order" | "statement" | "other";
 
 export type EndpointResult = { ok: true; path: string } | { ok: false; reason: string };
 
@@ -128,6 +132,120 @@ export function buildOrderEndpoint(
   return { ok: true, path: `/order/${version}/orders?ids=${ids.join(",")}` };
 }
 
+/** Versão do endpoint de extrato (parte do path assinado). */
+export const STATEMENT_API_VERSION = "202501";
+
+/**
+ * Único valor aceito por `sort_field` na documentação — e ele é
+ * OBRIGATÓRIO, mesmo só tendo uma opção. Sem ele a chamada é recusada.
+ */
+export const STATEMENT_SORT_FIELD = "order_create_time";
+
+export const STATEMENT_SORT_ORDERS = ["DESC", "ASC"] as const;
+export type StatementSortOrder = (typeof STATEMENT_SORT_ORDERS)[number];
+
+/** Faixa aceita por `page_size` (padrão da API: 20). */
+export const MIN_STATEMENT_PAGE_SIZE = 1;
+export const MAX_STATEMENT_PAGE_SIZE = 100;
+
+/** Padrão desta aplicação: o teto, para reduzir o número de assinaturas. */
+export const DEFAULT_STATEMENT_PAGE_SIZE = MAX_STATEMENT_PAGE_SIZE;
+
+export interface StatementEndpointOptions {
+  pageSize?: number;
+  sortOrder?: StatementSortOrder;
+  /** `next_page_token` da página anterior; ausente na primeira página. */
+  pageToken?: string;
+}
+
+/**
+ * Extrai o ID do extrato de um valor colado.
+ *
+ * Diferente de produto e pedido, aqui o ID fica no MEIO do caminho
+ * (`/statements/{id}/statement_transactions`), então pegar o último
+ * segmento devolveria "statement_transactions". Por isso o ID é buscado
+ * depois de `/statements/`, com o último segmento como plano B para quem
+ * colou só o ID.
+ */
+export function cleanStatementId(raw: string): string {
+  let value = raw.trim().replace(/^["'`<]+/, "").replace(/["'`>]+$/, "").trim();
+
+  const queryIndex = value.indexOf("?");
+  if (queryIndex !== -1) value = value.slice(0, queryIndex);
+
+  const match = /\/statements\/([^/?]+)/.exec(value);
+  if (match?.[1] !== undefined) return match[1].trim();
+
+  const lastSlash = value.lastIndexOf("/");
+  if (lastSlash !== -1) value = value.slice(lastSlash + 1);
+
+  return value.trim();
+}
+
+/**
+ * Caracteres aceitos em `page_token`. O token é base64 com `+`, `/` e `=`
+ * (ver o exemplo da documentação), e é o único parâmetro desta API que
+ * não é um número ou uma palavra fixa — daí a validação existir.
+ */
+const PAGE_TOKEN_PATTERN = /^[A-Za-z0-9+/=_-]+$/;
+
+/**
+ * Monta `/finance/{versão}/statements/{id}/statement_transactions?...`.
+ *
+ * Os parâmetros saem em ordem alfabética, sempre igual, para que duas
+ * montagens do mesmo pedido gerem exatamente a mesma string — o que
+ * facilita comparar com o que o sistema interno assinou. A ordem em si
+ * não afeta o `sign` (o algoritmo do TikTok ordena os parâmetros antes de
+ * calcular), mas a string enviada precisa ser a mesma que foi assinada.
+ *
+ * `sort_field` entra sempre: é obrigatório e só aceita `order_create_time`.
+ */
+export function buildStatementEndpoint(
+  rawId: string,
+  options: StatementEndpointOptions = {},
+): EndpointResult {
+  const id = cleanStatementId(rawId);
+
+  if (id === "") {
+    return { ok: false, reason: "Informe o código do extrato (statement_id)." };
+  }
+  if (!/^\d+$/.test(id)) {
+    return {
+      ok: false,
+      reason: `O código do extrato é composto só por números (ex.: 7238804564097517339). Valor lido: "${id}".`,
+    };
+  }
+
+  const { pageSize = DEFAULT_STATEMENT_PAGE_SIZE, sortOrder = "DESC", pageToken } = options;
+
+  if (!Number.isInteger(pageSize) || pageSize < MIN_STATEMENT_PAGE_SIZE || pageSize > MAX_STATEMENT_PAGE_SIZE) {
+    return {
+      ok: false,
+      reason: `page_size precisa ser um inteiro entre ${MIN_STATEMENT_PAGE_SIZE} e ${MAX_STATEMENT_PAGE_SIZE} (informado: ${pageSize}).`,
+    };
+  }
+
+  const token = pageToken?.trim() ?? "";
+  if (token !== "" && !PAGE_TOKEN_PATTERN.test(token)) {
+    return {
+      ok: false,
+      reason:
+        "O page_token deve ser copiado exatamente como veio em next_page_token (letras, números e + / = _ -). " +
+        "Espaços ou outros caracteres indicam que ele foi quebrado no copiar/colar.",
+    };
+  }
+
+  // Ordem alfabética: page_size, page_token, sort_field, sort_order.
+  const params = [`page_size=${pageSize}`];
+  if (token !== "") params.push(`page_token=${token}`);
+  params.push(`sort_field=${STATEMENT_SORT_FIELD}`, `sort_order=${sortOrder}`);
+
+  return {
+    ok: true,
+    path: `/finance/${STATEMENT_API_VERSION}/statements/${id}/statement_transactions?${params.join("&")}`,
+  };
+}
+
 /**
  * Descobre o tipo de recurso pelo path da URL assinada, para que a
  * validação e a exibição não dependam da aba selecionada — colar uma URL
@@ -136,5 +254,10 @@ export function buildOrderEndpoint(
 export function detectResourceKind(path: string): ResourceKind {
   if (path.startsWith("/product/")) return "product";
   if (path.startsWith("/order/")) return "order";
+  // Só as transações do extrato têm exibição dedicada; a listagem de
+  // extratos (/finance/.../statements) cai no JSON bruto.
+  if (path.startsWith("/finance/") && path.endsWith("/statement_transactions")) {
+    return "statement";
+  }
   return "other";
 }

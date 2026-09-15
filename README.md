@@ -1,8 +1,9 @@
 # tiktok-product-viewer
 
-Aplicação web (React + Vite + TypeScript) para consultar **anúncios e
-pedidos** da API do TikTok Shop a partir de uma **URL já assinada** por um
-sistema interno, exibindo o resultado de forma legível.
+Aplicação web (React + Vite + TypeScript) para consultar **anúncios,
+pedidos e extratos de repasse** da API do TikTok Shop a partir de uma
+**URL já assinada** por um sistema interno, exibindo o resultado de forma
+legível.
 
 Endpoints suportados:
 
@@ -10,6 +11,7 @@ Endpoints suportados:
 |---|---|---|
 | Anúncio | `/product/202309/products/{id}` | no path |
 | Pedidos | `/order/202507/orders?ids=a,b` (ou `202309`) | na **query** (`ids`) |
+| Extrato | `/finance/202501/statements/{id}/statement_transactions?sort_field=...` | no path, **com parâmetros na query** |
 
 Esta aplicação **não** calcula `sign` e **não** pede `app_secret`. O fluxo é
 sempre: colar a URL assinada + o access token → GET → resultado.
@@ -108,7 +110,7 @@ path + query intactos.
 
 ## Funcionalidades
 
-- **Montador de endpoint (passo 1)**, com abas para anúncio e pedidos:
+- **Montador de endpoint (passo 1)**, com abas para anúncio, pedidos e extrato:
   - *Anúncio*: informe o `product_id` e a aplicação monta
     `/product/202309/products/<id>`. Aceita o ID puro e tolera colar um
     path ou URL inteiro (fica com o último segmento antes da query).
@@ -121,16 +123,24 @@ path + query intactos.
     não muda nada quanto à assinatura.
     O `ids` já sai no caminho porque **faz parte da query assinada**:
     acrescentá-lo depois da assinatura invalidaria o `sign`.
+  - *Extrato*: informe o `statement_id` e a aplicação monta
+    `/finance/202501/statements/<id>/statement_transactions` já com
+    `sort_field=order_create_time` (obrigatório, e o único valor aceito),
+    `page_size` e `sort_order`. Há um campo opcional para o `page_token`
+    da próxima página. Tolera colar o caminho inteiro: o ID é lido de
+    dentro de `/statements/<id>/`, e não do último segmento. O endpoint
+    exige o escopo `seller.finance.info` no app.
 
-  Nos dois casos há botão de copiar, e o caminho gerado é o que vai para o
+  Nos três casos há botão de copiar, e o caminho gerado é o que vai para o
   sistema interno de assinatura.
 - **Tipo de recurso detectado pelo path** da URL assinada, não pela aba
   escolhida: colar uma URL de pedido com a aba de anúncio aberta continua
-  funcionando, e a validação passa a exigir `ids`.
-- **Validação antes de enviar**: bloqueia placeholder `{product_id}` não
-  substituído e parâmetros obrigatórios ausentes (`shop_cipher`, `app_key`,
-  `timestamp`, `sign`); avisa (sem bloquear) quando o `timestamp` tem mais
-  de 4 minutos.
+  funcionando, e a validação passa a exigir `ids`. O mesmo vale para o
+  extrato, reconhecido pelo sufixo `/statement_transactions`.
+- **Validação antes de enviar**: bloqueia placeholder não substituído
+  (`{product_id}`, `{statement_id}` ou qualquer outro no mesmo formato) e
+  parâmetros obrigatórios ausentes (`shop_cipher`, `app_key`, `timestamp`,
+  `sign`); avisa (sem bloquear) quando o `timestamp` tem mais de 4 minutos.
 - **Separador de query codificado no path** (`%3F` no lugar de `?`, `%26`
   no lugar de `&`): sintoma de um sistema de assinatura que codificou o
   caminho inteiro como um único valor. Os parâmetros do endpoint ficam
@@ -139,8 +149,10 @@ path + query intactos.
   explica isso e oferece um botão que reconstrói a URL com os separadores
   literais, para diagnosticar se a assinatura em si está correta.
 - **Painel de parâmetros** sempre visível com nome e valor brutos, para
-  conferir que são exatamente os esperados e nada a mais (4 para anúncio,
-  5 para pedidos por causa do `ids`).
+  conferir que são exatamente os esperados e nada a mais: 4 obrigatórios
+  para anúncio, 5 para pedidos (por causa do `ids`) e 5 para extrato (por
+  causa do `sort_field`), mais os opcionais de paginação, que ficam
+  marcados como tal em vez de aparecerem como inesperados.
 - **Erros traduzidos**: `106001`/`10008` (assinatura), `36009004` (token),
   `12000000` (`shop_cipher`), `21008111` (pedido de outra loja), além dos
   transitórios do Get Order Detail (`10002014/15`, `10037002/3/4`,
@@ -157,6 +169,21 @@ path + query intactos.
     iguais vêm como duas entradas), então a lista crua repetiria linhas sem
     informar quantidade. O botão copia uma linha por SKU, que é o formato
     usado para cruzar com o cadastro do ERP.
+  - *Extrato*: cartão de totais (valor a pagar, total repassado, reserva)
+    com a composição do repasse e a **conferência das fórmulas publicadas
+    na documentação** — receita − frete − taxas/impostos − ajustes =
+    total repassado, e total repassado + reserva = valor a pagar —,
+    apontando divergência em vez de escondê-la. Depois vêm os totais por
+    tipo de transação e a tabela de transações, com detalhamento sob
+    demanda. Cada transação tem ~70 campos de detalhe e quase todos vêm
+    zerados, então só os **diferentes de zero** aparecem (com a contagem
+    dos omitidos), traduzidos para português. O botão "copiar para
+    planilha" gera uma linha por transação com os valores brutos, para
+    reconciliar no Excel.
+- **Paginação do extrato explicada**: o `page_token` faz parte da query
+  assinada, então não dá para "avançar página" dentro do app. Quando a
+  resposta traz `next_page_token`, a aplicação monta o caminho da próxima
+  página — com o mesmo `page_size` e `sort_order` — pronto para assinar.
 - **Diagnóstico de integração**: alertas automáticos de `external_product_id`
   ambíguo, `seller_sku` vazio/duplicado, estoque baixo, preços divergentes,
   EAN ausente e descrição escrita para uma única cor.
@@ -172,9 +199,11 @@ api/
   tts.ts                 # proxy de produção (Vercel Edge Function)
 src/
   types/tiktok.ts        # tipagem completa da resposta da API
-  lib/endpoint.ts        # monta os endpoints de anúncio e de pedidos
+  lib/endpoint.ts        # monta os endpoints de anúncio, pedidos e extrato
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
   lib/orders.ts          # agrupamento dos itens do pedido por SKU
+  lib/statements.ts      # leitura dos valores do extrato (string → número)
+  lib/statementLabels.ts # tradução dos ~70 campos do extrato
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
   lib/*.test.ts          # testes das funções puras
   lib/api.ts             # camada de chamada (fetch via proxy /api/tts)

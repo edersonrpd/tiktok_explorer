@@ -1,10 +1,15 @@
-import { requiredParamsFor, type QueryParam } from "../lib/signedUrl";
+import { optionalParamsFor, requiredParamsFor, type QueryParam } from "../lib/signedUrl";
 import type { ResourceKind } from "../lib/endpoint";
 
 /**
  * Painel sempre visível com os parâmetros detectados na query da URL
  * assinada, exatamente como serão enviados (valores brutos, sem decode),
- * para conferência visual: devem ser exatamente 4 e nada a mais.
+ * para conferência visual: os obrigatórios precisam estar todos lá, e
+ * nada além dos que a documentação prevê.
+ *
+ * O extrato aceita três parâmetros OPCIONAIS (paginação e ordenação), que
+ * por isso não entram na contagem de obrigatórios nem são marcados como
+ * inesperados — mas continuam listados, já que também são assinados.
  */
 export function ParamsPanel({
   params,
@@ -15,7 +20,11 @@ export function ParamsPanel({
 }) {
   const expected = requiredParamsFor(resourceKind);
   const requiredSet = new Set<string>(expected);
-  const extras = params.filter((p) => !requiredSet.has(p.name));
+  const allowedSet = new Set<string>([...expected, ...optionalParamsFor(resourceKind)]);
+  const extras = params.filter((p) => !allowedSet.has(p.name));
+  const presentRequired = expected.filter((name) => params.some((p) => p.name === name)).length;
+  const optionalCount = params.filter((p) => allowedSet.has(p.name) && !requiredSet.has(p.name))
+    .length;
 
   return (
     <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2">
@@ -23,12 +32,13 @@ export function ParamsPanel({
         <span>Parâmetros detectados na URL</span>
         <span
           className={
-            params.length === expected.length && extras.length === 0
+            presentRequired === expected.length && extras.length === 0
               ? "text-emerald-600"
               : "text-amber-600"
           }
         >
-          {params.length} de {expected.length} esperados
+          {presentRequired} de {expected.length} obrigatórios
+          {optionalCount > 0 ? ` + ${optionalCount} opcional(is)` : ""}
           {extras.length > 0 ? ` (${extras.length} extra!)` : ""}
         </span>
       </p>
@@ -40,13 +50,14 @@ export function ParamsPanel({
             <div key={`${p.name}-${i}`} className="flex gap-2 font-mono text-[11px]">
               <dt
                 className={
-                  requiredSet.has(p.name)
+                  allowedSet.has(p.name)
                     ? "shrink-0 font-semibold text-slate-700"
                     : "shrink-0 font-semibold text-amber-700"
                 }
               >
                 {p.name}
-                {!requiredSet.has(p.name) && " (inesperado)"}
+                {!allowedSet.has(p.name) && " (inesperado)"}
+                {allowedSet.has(p.name) && !requiredSet.has(p.name) && " (opcional)"}
               </dt>
               <dd className="truncate text-slate-500" title={p.value}>
                 {p.value}

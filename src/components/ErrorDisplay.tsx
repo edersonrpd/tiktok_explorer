@@ -1,19 +1,12 @@
 import type { FetchFailure } from "../lib/api";
 import type { ResourceKind } from "../lib/endpoint";
 import { explainErrorCode, NETWORK_ERROR_EXPLANATION } from "../lib/errorCodes";
-import { SIGNATURE_MAX_AGE_SECONDS } from "../lib/signedUrl";
+import { requiredParamsFor, SIGNATURE_MAX_AGE_SECONDS, SIGNATURE_PARAMS } from "../lib/signedUrl";
 import { formatAge } from "../lib/format";
 
 /** Códigos que significam assinatura inválida. */
 const SIGNATURE_ERROR_CODES = [106001, 10008];
 
-/**
- * Endpoints com parâmetro de negócio na query (ex.: `ids` em pedidos)
- * expõem uma falha comum do sistema que assina: ele considera apenas o
- * path e seus próprios parâmetros, ignorando os demais. Nesse caso o
- * anúncio continua funcionando e só o pedido falha — pista que vale
- * mostrar junto do erro.
- */
 /**
  * O 106001 tem duas causas muito diferentes — assinatura expirada ou query
  * divergente da que foi assinada — e a mensagem da API não distingue.
@@ -36,12 +29,20 @@ function ageVerdictFor(code: number, signatureAge: number | null): string | null
 }
 
 function extraHintFor(code: number, resourceKind: ResourceKind): string | null {
-  if (!SIGNATURE_ERROR_CODES.includes(code) || resourceKind !== "order") return null;
+  if (!SIGNATURE_ERROR_CODES.includes(code)) return null;
+
+  // Parâmetros de negócio do endpoint — os que já vêm no caminho montado
+  // no passo 1 e que o sistema interno precisa incluir no cálculo.
+  const business = requiredParamsFor(resourceKind).filter(
+    (name) => !SIGNATURE_PARAMS.includes(name as (typeof SIGNATURE_PARAMS)[number]),
+  );
+  if (business.length === 0) return null;
+
   return (
-    "Este endpoint leva ids na query, e a assinatura precisa cobrir esse parâmetro junto com " +
-    "app_key, timestamp e shop_cipher. Se a consulta de anúncio funciona e só a de pedidos falha, " +
-    "o sistema interno provavelmente assina apenas o path e os parâmetros que ele mesmo adiciona, " +
-    "ignorando os que já vinham no caminho."
+    `Este endpoint leva ${business.join(", ")} na query, e a assinatura precisa cobrir ` +
+    "esse(s) parâmetro(s) junto com app_key, timestamp e shop_cipher. Se a consulta de anúncio " +
+    "funciona e só esta falha, o sistema interno provavelmente assina apenas o path e os " +
+    "parâmetros que ele mesmo adiciona, ignorando os que já vinham no caminho."
   );
 }
 
