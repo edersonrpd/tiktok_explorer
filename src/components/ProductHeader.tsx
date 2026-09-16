@@ -1,45 +1,87 @@
+import { Layers, Copy } from "lucide-react";
 import type { Product } from "../types/tiktok";
 import { formatEpochBR } from "../lib/format";
-import { Card } from "./ui";
 
-export function ProductHeader({ product }: { product: Product }) {
+export function ProductHeader({
+  product,
+  onToast,
+}: {
+  product: Product;
+  onToast: (msg: string) => void;
+}) {
   const chains = product.category_chains ?? [];
+  const leaf = chains.find((c) => c.is_leaf) ?? chains[chains.length - 1];
+  const imgUrl = product.main_images?.[0]?.urls?.[0];
+
+  const handleCopyId = () => {
+    void navigator.clipboard.writeText(product.id).then(() => onToast("Código do anúncio copiado!"));
+  };
 
   return (
-    <Card title="Produto">
-      <h1 className="text-base font-semibold text-slate-900">{product.title ?? "(sem título)"}</h1>
-
-      {chains.length > 0 && (
-        <nav className="mt-1 text-xs text-slate-500">
-          {chains.map((c, i) => (
-            <span key={c.id}>
-              {i > 0 && <span className="mx-1 text-slate-300">›</span>}
-              <span className={c.is_leaf ? "font-semibold text-slate-800" : ""}>{c.local_name}</span>
+    <section className="card">
+      <div className="hero">
+        <div className="hero-img">
+          {imgUrl !== undefined && imgUrl !== "" ? (
+            <img src={imgUrl} alt="Produto" />
+          ) : (
+            <div className="hero-ph">
+              sem
+              <br />
+              imagem
+            </div>
+          )}
+        </div>
+        <div className="hero-body">
+          {leaf !== undefined && (
+            <span className="hero-eyebrow">
+              <Layers className="h-3 w-3" />
+              {leaf.local_name}
             </span>
-          ))}
-        </nav>
-      )}
+          )}
+          <h1 className="hero-title">{product.title ?? "(sem título)"}</h1>
+          <span className="id-chip">
+            <span className="k">ID</span>
+            <span className="v">{product.id}</span>
+            <button type="button" className="copy-btn" onClick={handleCopyId} title="Copiar código do anúncio">
+              <Copy />
+            </button>
+          </span>
 
-      <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-3">
-        <Field label="ID" value={product.id} mono />
-        <Field label="Status" value={product.status} />
-        <Field label="Auditoria" value={product.audit?.status} />
-        <Field label="Marca" value={product.brand?.name} />
-        <Field label="external_product_id" value={product.external_product_id} mono />
-        <Field label="Criado em" value={formatEpochBR(product.create_time)} />
-        <Field label="Atualizado em" value={formatEpochBR(product.update_time)} />
-      </dl>
-    </Card>
-  );
-}
+          <div className="badges">
+            {product.status !== undefined && (
+              <span className={`badge ${product.status === "ACTIVATE" ? "green" : "gray"}`}>
+                {product.status}
+              </span>
+            )}
+            {product.audit?.status !== undefined && (
+              <span className={`badge ${product.audit.status === "APPROVED" ? "green" : "blue"}`}>
+                Auditoria: {product.audit.status}
+              </span>
+            )}
+            {product.is_not_for_sale === true && <span className="badge gray">Fora de venda</span>}
+            {product.is_cod_allowed === true && <span className="badge pink">COD permitido</span>}
+          </div>
 
-function Field({ label, value, mono }: { label: string; value: string | undefined; mono?: boolean }) {
-  return (
-    <div>
-      <dt className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{label}</dt>
-      <dd className={`text-slate-800 ${mono === true ? "select-all font-mono" : ""}`}>
-        {value !== undefined && value !== "" ? value : "—"}
-      </dd>
-    </div>
+          <div className="meta-grid">
+            <div className="meta">
+              <div className="mk">Marca</div>
+              <div className="mv">{product.brand?.name ?? "—"}</div>
+            </div>
+            <div className="meta">
+              <div className="mk">external_product_id</div>
+              <div className="mv mono">{product.external_product_id ?? "—"}</div>
+            </div>
+            <div className="meta">
+              <div className="mk">Criado em</div>
+              <div className="mv">{formatEpochBR(product.create_time)}</div>
+            </div>
+            <div className="meta">
+              <div className="mk">Atualizado em</div>
+              <div className="mv">{formatEpochBR(product.update_time)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }

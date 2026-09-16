@@ -152,6 +152,8 @@ export interface OrderPayment {
   original_shipping_fee?: string;
   shipping_fee_seller_discount?: string;
   shipping_fee_platform_discount?: string;
+  /** Desconto de frete dividido entre plataforma e vendedor. */
+  shipping_fee_cofunded_discount?: string;
   tax?: string;
   product_tax?: string;
   shipping_fee_tax?: string;
@@ -223,6 +225,9 @@ export interface OrderLineItem {
   shipping_provider_name?: string;
   shipping_provider_id?: string;
   is_gift?: boolean;
+  gift_retail_price?: string;
+  shipping_vat_amount?: string;
+  shipping_vat_rate?: string;
   rts_time?: number;
   item_tax?: ItemTax[];
   combined_listing_skus?: CombinedListingSku[];
@@ -265,6 +270,16 @@ export interface Order {
   delivery_option_name?: string;
   fulfillment_type?: string;
   warehouse_id?: string;
+  delivery_option_id?: string;
+  has_updated_recipient_address?: boolean;
+  /** SLAs do pedido (epoch em segundos). */
+  rts_sla_time?: number;
+  tts_sla_time?: number;
+  cancel_order_sla_time?: number;
+  collection_due_time?: number;
+  /** CNPJ da entidade do marketplace, usado na nota fiscal. */
+  channel_entity_national_registry_id?: string;
+  need_upload_invoice?: string;
   cancel_reason?: string;
   cancellation_initiator?: string;
   is_buyer_request_cancel?: boolean;
@@ -275,6 +290,13 @@ export interface Order {
   replaced_order_id?: string;
   split_or_combine_tag?: string;
   payment_method_name?: string;
+  payment_method_code?: string;
+  /** Código da autorização do pagamento (o "E2085..." do Pix, por exemplo). */
+  payment_auth_code?: string;
+  /** CPF do comprador — obrigatório em pedidos no Brasil. */
+  cpf?: string;
+  /** Nome completo associado ao CPF, como declarado na nota fiscal. */
+  cpf_name?: string;
   commerce_platform?: string;
   order_type?: string;
   handling_duration?: HandlingDuration;
@@ -290,63 +312,161 @@ export interface OrderListData {
 
 export type OrderResponse = TikTokApiResponse<OrderListData>;
 
-/**
- * Tipagem do endpoint de taxas
- * GET /finance/202501/orders/{order_id}/statement_transactions.
- *
- * POR QUE OS GRUPOS DE TAXA SÃO UM `Record` E NÃO CAMPOS FIXOS:
- * o `fee_tax_breakdown` tem mais de 40 rubricas possíveis e o próprio
- * schema oficial marca boa parte delas como exclusivas de uma região
- * (`referral_fee_amount` só US, `platform_commission_amount` só UK,
- * `isr_amount`/`iva_amount` México, `pit_amount` no Sudeste Asiático...).
- * Declarar campo a campo daria a impressão falsa de que todos chegam em
- * toda resposta, e esconderia qualquer rubrica nova que o TikTok passe a
- * enviar. Aqui cada grupo é um mapa chave → valor, e a exibição mostra o
- * que de fato veio (ver src/lib/fees.ts).
- */
-export type AmountBreakdown = Record<string, string | undefined>;
+/* ------------------------------------------------------------------------ */
+/* Transações por pedido — GET /finance/202501/orders/{id}/statement_transactions */
+/* ------------------------------------------------------------------------ */
 
-export interface SkuFeeTaxBreakdown {
-  /** Taxas cobradas pela plataforma: comissões, referral, transação... */
-  fee?: AmountBreakdown;
-  /** Impostos retidos: VAT, IVA, ISR, PIT, aduaneiros... */
-  tax?: AmountBreakdown;
+export interface RevenueBreakdown {
+  subtotal_before_discount_amount?: string;
+  seller_discount_amount?: string;
+  refund_subtotal_before_discount_amount?: string;
+  seller_discount_refund_amount?: string;
+  cod_service_fee_amount?: string;
+  refund_cod_service_fee_amount?: string;
+  distant_item_fee_amount?: string;
+}
+
+export interface ShippingCostBreakdown {
+  actual_shipping_fee_amount?: string;
+  /** Só documentado no Get Transactions by Statement. */
+  international_leg_logistics_amount?: string;
+  shipping_fee_discount_amount?: string;
+  customer_paid_shipping_fee_amount?: string;
+  return_shipping_fee_amount?: string;
+  replacement_shipping_fee_amount?: string;
+  exchange_shipping_fee_amount?: string;
+  signature_confirmation_fee_amount?: string;
+  shipping_insurance_fee_amount?: string;
+  fbt_fulfillment_fee_reimbursement_amount?: string;
+  return_shipping_label_fee_amount?: string;
+  seller_self_shipping_service_fee_amount?: string;
+  return_shipping_fee_paid_buyer_amount?: string;
+  failed_delivery_subsidy_amount?: string;
+  /** Só documentado no Get Transactions by Statement. */
+  shipping_fee_guarantee_reimbursement?: string;
+  fbt_free_shipping_fee_amount?: string;
+  free_return_subsidy_amount?: string;
+  distant_shipping_fee_amount?: string;
+  shipping_app_service_fee_amount?: string;
+  logistics_service_fee?: string;
+  fbt_overall_merchant_subsidy?: string;
+  fbt_key_merchant_subsidy?: string;
+  tiktok_shop_shipping_incentive_amount?: string;
+  /** Custos suplementares que não contribuem diretamente para shipping_cost_amount. */
+  supplementary_component?: Record<string, string>;
+}
+
+/** Dezenas de fees e taxas específicas de mercado — ver documentação para o significado de cada uma. */
+export interface FeeTaxBreakdown {
+  fee?: Record<string, string>;
+  tax?: Record<string, string>;
 }
 
 export interface SkuTransaction {
   sku_id?: string;
   sku_name?: string;
-  product_name?: string;
-  /** Quantidade do SKU incluída na liquidação (vem como string). */
-  quantity?: string;
   statement_id?: string;
-  /** Receita do SKU: soma de `revenue_breakdown`. */
-  revenue_amount?: string;
-  /** Taxas + impostos do SKU: soma de `fee_tax_breakdown`. */
-  fee_tax_amount?: string;
-  /** Custos de frete do SKU: soma de `shipping_cost_breakdown`. */
-  shipping_cost_amount?: string;
-  /** Repasse do SKU: receita − frete − taxas. */
+  product_name?: string;
+  quantity?: string;
   settlement_amount?: string;
-  fee_tax_breakdown?: SkuFeeTaxBreakdown;
-  revenue_breakdown?: AmountBreakdown;
-  shipping_cost_breakdown?: AmountBreakdown;
+  revenue_amount?: string;
+  revenue_breakdown?: RevenueBreakdown;
+  shipping_cost_amount?: string;
+  shipping_cost_breakdown?: ShippingCostBreakdown;
+  fee_tax_amount?: string;
+  fee_tax_breakdown?: FeeTaxBreakdown;
 }
 
-export interface OrderFeesData {
-  order_id?: string;
+export interface TransactionsByOrderData {
+  order_id: string;
   order_create_time?: number;
   currency?: string;
-  /** Receita do pedido no momento da liquidação. */
   revenue_amount?: string;
-  /** Total de taxas e impostos cobrados pela plataforma. */
   fee_and_tax_amount?: string;
-  /** Custos de frete no momento da liquidação. */
   shipping_cost_amount?: string;
-  /** Repasse: `revenue_amount` − `shipping_cost_amount` − `fee_and_tax_amount`. */
   settlement_amount?: string;
-  total_count?: number;
   sku_transactions?: SkuTransaction[];
+  total_count?: number;
 }
 
-export type OrderFeesResponse = TikTokApiResponse<OrderFeesData>;
+export type TransactionsByOrderResponse = TikTokApiResponse<TransactionsByOrderData>;
+
+/* ------------------------------------------------------------------------ */
+/* Transações por extrato                                                     */
+/* GET /finance/202501/statements/{id}/statement_transactions                 */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * O irmão deste endpoint (transações por PEDIDO, acima) devolve os mesmos
+ * blocos de detalhamento — `RevenueBreakdown`, `ShippingCostBreakdown` e
+ * `FeeTaxBreakdown` são reaproveitados aqui em vez de duplicados.
+ *
+ * A diferença está no nível: lá cada linha é um SKU de um pedido; aqui
+ * cada linha é um pedido, um ajuste ou uma movimentação de reserva do
+ * repasse inteiro — e vem com o cabeçalho do extrato (valor a pagar,
+ * reserva, totais) que o outro endpoint não tem.
+ *
+ * TODO VALOR MONETÁRIO É STRING, inclusive negativos e zeros, e às vezes
+ * com espaço sobrando ("0 " aparece no exemplo da documentação). A
+ * leitura passa sempre por `parseMoney` (src/lib/money.ts).
+ */
+
+/** Valores de referência da transação — NÃO entram no cálculo do repasse. */
+export type TransactionSupplementaryComponent = Record<string, string>;
+
+/**
+ * Uma linha do extrato. Cada transação é UM pedido, UM ajuste ou UMA
+ * movimentação de reserva — os campos preenchidos mudam conforme `type`.
+ */
+export interface StatementTransaction {
+  id: string;
+  /** ORDER, RESERVE ou um dos tipos de ajuste (ver src/lib/statementLabels.ts). */
+  type?: string;
+  order_id?: string;
+  order_create_time?: number;
+  adjustment_id?: string;
+  adjustment_order_id?: string;
+  adjustment_amount?: string;
+  settlement_amount?: string;
+  revenue_amount?: string;
+  revenue_breakdown?: RevenueBreakdown;
+  shipping_cost_amount?: string;
+  shipping_cost_breakdown?: ShippingCostBreakdown;
+  fee_tax_amount?: string;
+  fee_tax_breakdown?: FeeTaxBreakdown;
+  supplementary_component?: TransactionSupplementaryComponent;
+  reserve_id?: string;
+  reserve_amount?: string;
+  associated_order_id?: string;
+  /** COLLECTED (retido) ou RELEASED (liberado). */
+  reserve_status?: string;
+  /** Epoch em segundos, mas vem como string nesta API. */
+  estimated_release_time?: string;
+}
+
+/** Parcelas que compõem `total_settlement_amount`. */
+export interface StatementSettlementBreakdown {
+  total_revenue_amount?: string;
+  total_shipping_cost_amount?: string;
+  total_fee_tax_amount?: string;
+  total_adjustment_amount?: string;
+}
+
+export interface StatementTransactionsData {
+  next_page_token?: string;
+  /** ID do extrato (o mesmo informado no path). */
+  id?: string;
+  create_time?: number;
+  /** Só existe SETTLED nesta API. */
+  status?: string;
+  currency?: string;
+  payable_amount?: string;
+  total_reserve_amount?: string;
+  total_settlement_amount?: string;
+  total_settlement_breakdown?: StatementSettlementBreakdown;
+  /** Total de transações do extrato inteiro, não da página. */
+  total_count?: number;
+  transactions?: StatementTransaction[];
+}
+
+export type StatementTransactionsResponse = TikTokApiResponse<StatementTransactionsData>;

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOrderEndpoint,
-  buildOrderFeesEndpoint,
   buildProductEndpoint,
-  cleanOrderFeesId,
+  buildTransactionEndpoint,
   cleanProductId,
+  buildStatementEndpoint,
+  cleanStatementId,
   detectResourceKind,
   MAX_ORDER_IDS,
   parseOrderIds,
@@ -88,65 +89,41 @@ describe("buildOrderEndpoint", () => {
   });
 });
 
-describe("buildOrderFeesEndpoint", () => {
-  it("monta o endpoint de taxas com o pedido no path", () => {
-    expect(buildOrderFeesEndpoint("576461413038785752")).toEqual({
+describe("buildTransactionEndpoint", () => {
+  it("monta o endpoint a partir do código do pedido", () => {
+    expect(buildTransactionEndpoint("5793990727963214852")).toEqual({
       ok: true,
-      path: "/finance/202501/orders/576461413038785752/statement_transactions",
+      path: "/finance/202501/orders/5793990727963214852/statement_transactions",
     });
   });
 
-  it("aceita a versão anterior do endpoint", () => {
-    const result = buildOrderFeesEndpoint("576461413038785752", "202309");
+  it("ignora espaços em volta do código", () => {
+    const result = buildTransactionEndpoint("  5793990727963214852 \n");
     expect(result.ok && result.path).toBe(
-      "/finance/202309/orders/576461413038785752/statement_transactions",
+      "/finance/202501/orders/5793990727963214852/statement_transactions",
     );
   });
 
-  it("recusa código vazio ou não numérico", () => {
-    expect(buildOrderFeesEndpoint("   ").ok).toBe(false);
-    expect(buildOrderFeesEndpoint("576461-ABC").ok).toBe(false);
-  });
-});
-
-describe("cleanOrderFeesId", () => {
-  it("pega o ID do pedido, não o último segmento do path de taxas", () => {
-    expect(
-      cleanOrderFeesId("/finance/202501/orders/576461413038785752/statement_transactions"),
-    ).toBe("576461413038785752");
+  it("recusa código vazio", () => {
+    expect(buildTransactionEndpoint("   ").ok).toBe(false);
   });
 
-  it("funciona com a URL assinada inteira colada", () => {
-    expect(
-      cleanOrderFeesId(
-        "https://open-api.tiktokglobalshop.com/finance/202501/orders/576461413038785752/statement_transactions?app_key=k&sign=s",
-      ),
-    ).toBe("576461413038785752");
-  });
-
-  it("aceita o ID puro", () => {
-    expect(cleanOrderFeesId(" 576461413038785752 ")).toBe("576461413038785752");
+  it("recusa código com letras ou símbolos", () => {
+    expect(buildTransactionEndpoint("579399abc").ok).toBe(false);
   });
 });
 
 describe("detectResourceKind", () => {
-  it("reconhece produto e pedido pelo path", () => {
+  it("reconhece produto, pedido e transações pelo path", () => {
     expect(detectResourceKind("/product/202309/products/1")).toBe("product");
     expect(detectResourceKind("/order/202507/orders")).toBe("order");
-  });
-
-  it("reconhece as taxas por pedido, em qualquer versão", () => {
-    expect(detectResourceKind("/finance/202501/orders/123/statement_transactions")).toBe("fees");
-    expect(detectResourceKind("/finance/202309/orders/123/statement_transactions")).toBe("fees");
+    expect(
+      detectResourceKind("/finance/202501/orders/5793990727963214852/statement_transactions"),
+    ).toBe("transaction");
   });
 
   it("classifica endpoints desconhecidos como other", () => {
-    // O restante do módulo finance não tem exibição dedicada: cai no JSON bruto.
-    expect(detectResourceKind("/finance/202309/statements")).toBe("other");
-    expect(detectResourceKind("/finance/202507/orders/unsettled")).toBe("other");
-    expect(detectResourceKind("/finance/202309/statements/456/statement_transactions")).toBe(
-      "other",
-    );
+    expect(detectResourceKind("/something/202309/else")).toBe("other");
   });
 });
 
@@ -166,19 +143,82 @@ describe("limite de IDs por chamada", () => {
   });
 });
 
-describe("versões do endpoint de pedidos", () => {
-  it("usa a 202507 por padrão", () => {
-    const r = buildOrderEndpoint("576461413038785752");
-    expect(r.ok && r.path).toBe("/order/202507/orders?ids=576461413038785752");
+describe("buildStatementEndpoint", () => {
+  it("monta o endpoint com sort_field obrigatório e os padrões da aplicação", () => {
+    expect(buildStatementEndpoint("7238804564097517339")).toEqual({
+      ok: true,
+      path:
+        "/finance/202501/statements/7238804564097517339/statement_transactions" +
+        "?page_size=100&sort_field=order_create_time&sort_order=DESC",
+    });
   });
 
-  it("monta a 202309 quando escolhida", () => {
-    const r = buildOrderEndpoint("576461413038785752", "202309");
-    expect(r.ok && r.path).toBe("/order/202309/orders?ids=576461413038785752");
+  it("respeita page_size e sort_order informados", () => {
+    const result = buildStatementEndpoint("7238804564097517339", {
+      pageSize: 20,
+      sortOrder: "ASC",
+    });
+    expect(result.ok && result.path).toBe(
+      "/finance/202501/statements/7238804564097517339/statement_transactions" +
+        "?page_size=20&sort_field=order_create_time&sort_order=ASC",
+    );
   });
 
-  it("reconhece as duas versões como pedido", () => {
-    expect(detectResourceKind("/order/202309/orders")).toBe("order");
-    expect(detectResourceKind("/order/202507/orders")).toBe("order");
+  it("acrescenta o page_token literal, sem re-encoding", () => {
+    const token = "6AsPQsUMvH3RkchNUPPh22NROHkE0D8pmq/N5M1kHYcZmtRyv9aVrNv65W7Q6tFA+7D1ud64MPNz5OaT";
+    const result = buildStatementEndpoint("7238804564097517339", { pageToken: token });
+    expect(result.ok && result.path).toContain(`page_token=${token}`);
+  });
+
+  it("recusa page_size fora da faixa 1..100", () => {
+    expect(buildStatementEndpoint("7238804564097517339", { pageSize: 0 }).ok).toBe(false);
+    expect(buildStatementEndpoint("7238804564097517339", { pageSize: 101 }).ok).toBe(false);
+    expect(buildStatementEndpoint("7238804564097517339", { pageSize: 1.5 }).ok).toBe(false);
+    expect(buildStatementEndpoint("7238804564097517339", { pageSize: Number.NaN }).ok).toBe(false);
+  });
+
+  it("recusa page_token com caracteres que indicam quebra no copiar/colar", () => {
+    expect(buildStatementEndpoint("7238804564097517339", { pageToken: "abc def" }).ok).toBe(false);
+  });
+
+  it("ignora page_token vazio (primeira página)", () => {
+    const result = buildStatementEndpoint("7238804564097517339", { pageToken: "   " });
+    expect(result.ok && result.path.includes("page_token")).toBe(false);
+  });
+
+  it("recusa código vazio ou não numérico", () => {
+    expect(buildStatementEndpoint("  ").ok).toBe(false);
+    expect(buildStatementEndpoint("7238abc").ok).toBe(false);
+  });
+});
+
+describe("cleanStatementId", () => {
+  it("pega o ID do meio do caminho, não o último segmento", () => {
+    expect(
+      cleanStatementId("/finance/202501/statements/7238804564097517339/statement_transactions"),
+    ).toBe("7238804564097517339");
+  });
+
+  it("aceita o ID puro", () => {
+    expect(cleanStatementId(" 7238804564097517339 ")).toBe("7238804564097517339");
+  });
+
+  it("extrai o ID de uma URL assinada inteira", () => {
+    expect(
+      cleanStatementId(
+        "https://open-api.tiktokglobalshop.com/finance/202501/statements/7238804564097517339/statement_transactions?app_key=k&sign=s",
+      ),
+    ).toBe("7238804564097517339");
+  });
+});
+
+describe("detectResourceKind — os dois endpoints de finanças", () => {
+  it("separa transações do pedido das transações do extrato", () => {
+    expect(
+      detectResourceKind("/finance/202501/orders/5793990727963214852/statement_transactions"),
+    ).toBe("transaction");
+    expect(
+      detectResourceKind("/finance/202501/statements/7238804564097517339/statement_transactions"),
+    ).toBe("statement");
   });
 });

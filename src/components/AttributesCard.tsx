@@ -1,27 +1,36 @@
+import { ClipboardList, PackageSearch } from "lucide-react";
 import type { PackageDimensions, PackageWeight, ProductAttribute } from "../types/tiktok";
-import { Card } from "./ui";
 
 export function AttributesCard({ attributes }: { attributes: ProductAttribute[] }) {
   return (
-    <Card title="Atributos">
+    <section className="card">
+      <div className="card-hd">
+        <div className="hd-left">
+          <span className="ico">
+            <ClipboardList />
+          </span>
+          <h2 className="text-sm font-bold t-1">Atributos</h2>
+          <span className="count">{attributes.length}</span>
+        </div>
+      </div>
       {attributes.length === 0 ? (
-        <p className="text-xs text-slate-400">Sem atributos cadastrados.</p>
+        <p className="px-4 py-3 text-xs t-4">Sem atributos cadastrados.</p>
       ) : (
-        <dl className="space-y-1.5 text-xs">
+        <div className="attr-list">
           {attributes.map((attr, i) => (
-            <div key={attr.id ?? i} className="flex gap-2">
-              <dt className="w-40 shrink-0 font-medium text-slate-500">{attr.name ?? "—"}</dt>
-              <dd className="text-slate-800">
+            <div key={attr.id ?? i} className="attr-row">
+              <span className="akey">{attr.name ?? "—"}</span>
+              <span className="aval">
                 {(attr.values ?? [])
                   .map((v) => v.name)
                   .filter((n): n is string => n !== undefined && n !== "")
                   .join(", ") || "—"}
-              </dd>
+              </span>
             </div>
           ))}
-        </dl>
+        </div>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -40,17 +49,25 @@ export function PackageCard({
     weight !== undefined ? `${weight.value ?? "?"} ${weight.unit ?? ""}`.trim() : "—";
 
   return (
-    <Card title="Dimensões e peso da embalagem">
-      <dl className="space-y-1.5 text-xs">
-        <div className="flex gap-2">
-          <dt className="w-40 shrink-0 font-medium text-slate-500">Dimensões (C × L × A)</dt>
-          <dd className="text-slate-800">{dimText}</dd>
+    <section className="card">
+      <div className="card-hd">
+        <div className="hd-left">
+          <span className="ico">
+            <PackageSearch />
+          </span>
+          <h2 className="text-sm font-bold t-1">Dimensões e peso da embalagem</h2>
         </div>
-        <div className="flex gap-2">
-          <dt className="w-40 shrink-0 font-medium text-slate-500">Peso</dt>
-          <dd className="text-slate-800">{weightText}</dd>
+      </div>
+      <div className="attr-list">
+        <div className="attr-row">
+          <span className="akey">Dimensões (C × L × A)</span>
+          <span className="aval mono">{dimText}</span>
         </div>
-      </dl>
-    </Card>
+        <div className="attr-row">
+          <span className="akey">Peso</span>
+          <span className="aval mono">{weightText}</span>
+        </div>
+      </div>
+    </section>
   );
 }

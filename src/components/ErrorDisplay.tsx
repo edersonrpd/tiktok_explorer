@@ -1,19 +1,13 @@
+import { AlertTriangle } from "lucide-react";
 import type { FetchFailure } from "../lib/api";
 import type { ResourceKind } from "../lib/endpoint";
 import { explainErrorCode, NETWORK_ERROR_EXPLANATION } from "../lib/errorCodes";
-import { SIGNATURE_MAX_AGE_SECONDS } from "../lib/signedUrl";
+import { requiredParamsFor, SIGNATURE_MAX_AGE_SECONDS, SIGNATURE_PARAMS } from "../lib/signedUrl";
 import { formatAge } from "../lib/format";
 
 /** Códigos que significam assinatura inválida. */
 const SIGNATURE_ERROR_CODES = [106001, 10008];
 
-/**
- * Endpoints com parâmetro de negócio na query (ex.: `ids` em pedidos)
- * expõem uma falha comum do sistema que assina: ele considera apenas o
- * path e seus próprios parâmetros, ignorando os demais. Nesse caso o
- * anúncio continua funcionando e só o pedido falha — pista que vale
- * mostrar junto do erro.
- */
 /**
  * O 106001 tem duas causas muito diferentes — assinatura expirada ou query
  * divergente da que foi assinada — e a mensagem da API não distingue.
@@ -36,12 +30,20 @@ function ageVerdictFor(code: number, signatureAge: number | null): string | null
 }
 
 function extraHintFor(code: number, resourceKind: ResourceKind): string | null {
-  if (!SIGNATURE_ERROR_CODES.includes(code) || resourceKind !== "order") return null;
+  if (!SIGNATURE_ERROR_CODES.includes(code)) return null;
+
+  // Parâmetros de negócio do endpoint — os que já vêm no caminho montado
+  // no passo 1 e que o sistema interno precisa incluir no cálculo.
+  const business = requiredParamsFor(resourceKind).filter(
+    (name) => !SIGNATURE_PARAMS.includes(name as (typeof SIGNATURE_PARAMS)[number]),
+  );
+  if (business.length === 0) return null;
+
   return (
-    "Este endpoint leva ids na query, e a assinatura precisa cobrir esse parâmetro junto com " +
-    "app_key, timestamp e shop_cipher. Se a consulta de anúncio funciona e só a de pedidos falha, " +
-    "o sistema interno provavelmente assina apenas o path e os parâmetros que ele mesmo adiciona, " +
-    "ignorando os que já vinham no caminho."
+    `Este endpoint leva ${business.join(", ")} na query, e a assinatura precisa cobrir ` +
+    "esse(s) parâmetro(s) junto com app_key, timestamp e shop_cipher. Se a consulta de anúncio " +
+    "funciona e só esta falha, o sistema interno provavelmente assina apenas o path e os " +
+    "parâmetros que ele mesmo adiciona, ignorando os que já vinham no caminho."
   );
 }
 
@@ -128,30 +130,33 @@ function ErrorBox({
   sentTarget?: string;
 }) {
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-      <h3 className="text-sm font-semibold text-red-800">{title}</h3>
-      <p className="mt-1 text-xs text-red-700">{action}</p>
+    <div className="alert alert-error px-4 py-3">
+      <h3 className="flex items-center gap-1.5 text-sm font-bold text-red-700">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        {title}
+      </h3>
+      <p className="mt-1 text-xs t-2">{action}</p>
       {verdict !== undefined && verdict !== null && (
-        <p className="mt-2 rounded border border-red-300 bg-white px-2 py-1.5 text-xs text-red-900">
+        <p className="mt-2 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-900">
           <strong>Idade da assinatura no envio: </strong>
           {verdict}
         </p>
       )}
       {hint !== undefined && hint !== null && (
-        <p className="mt-2 rounded border border-red-200 bg-white px-2 py-1.5 text-xs text-red-800">
+        <p className="mt-2 rounded border border-red-100 bg-red-50/60 px-2 py-1.5 text-xs text-red-800">
           <strong>Provável causa neste endpoint: </strong>
           {hint}
         </p>
       )}
       {original !== undefined && original !== "" && (
-        <p className="mt-2 font-mono text-[11px] text-red-400">Mensagem original: {original}</p>
+        <p className="mt-2 font-mono text-[11px] t-4">Mensagem original: {original}</p>
       )}
       {sentTarget !== undefined && (
         <details className="mt-2">
-          <summary className="cursor-pointer text-xs font-medium text-red-700">
+          <summary className="cursor-pointer text-xs font-bold text-red-700">
             Ver exatamente o que foi enviado ao TikTok
           </summary>
-          <p className="mt-1 break-all rounded border border-red-200 bg-white px-2 py-1.5 font-mono text-[11px] text-slate-700">
+          <p className="panel mt-1 break-all px-2 py-1.5 font-mono text-[11px] t-2">
             <span className="select-all">{sentTarget}</span>
           </p>
           <p className="mt-1 text-[11px] text-red-600">

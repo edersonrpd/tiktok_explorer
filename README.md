@@ -1,16 +1,18 @@
 # tiktok-product-viewer
 
 Aplicação web (React + Vite + TypeScript) para consultar **anúncios,
-pedidos e taxas** da API do TikTok Shop a partir de uma **URL já assinada**
-por um sistema interno, exibindo o resultado de forma legível.
+pedidos, transações por pedido e extratos de repasse** da API do TikTok Shop a
+partir de uma **URL já assinada** por um sistema interno, exibindo o
+resultado de forma legível.
 
 Endpoints suportados:
 
 | Recurso | Endpoint | Onde vai o código |
 |---|---|---|
 | Anúncio | `/product/202309/products/{id}` | no path |
-| Pedidos | `/order/202507/orders?ids=a,b` (ou `202309`) | na **query** (`ids`) |
-| Taxas | `/finance/202501/orders/{id}/statement_transactions` (ou `202309`) | no path |
+| Pedidos | `/order/202507/orders?ids=a,b` | na **query** (`ids`) |
+| Transações do pedido | `/finance/202501/orders/{order_id}/statement_transactions` | no path |
+| Extrato (repasse) | `/finance/202501/statements/{id}/statement_transactions?sort_field=...` | no path, **com parâmetros na query** |
 
 Esta aplicação **não** calcula `sign` e **não** pede `app_secret`. O fluxo é
 sempre: colar a URL assinada + o access token → GET → resultado.
@@ -109,27 +111,40 @@ path + query intactos.
 
 ## Funcionalidades
 
-- **Montador de endpoint (passo 1)**, com abas para anúncio e pedidos:
+- **Montador de endpoint (passo 1)**, com abas para anúncio, pedidos,
+  transações e extrato:
   - *Anúncio*: informe o `product_id` e a aplicação monta
     `/product/202309/products/<id>`. Aceita o ID puro e tolera colar um
     path ou URL inteiro (fica com o último segmento antes da query).
   - *Pedidos*: informe um ou vários order ids — separados por vírgula,
     espaço ou quebra de linha, para colar direto de planilha — e a
     aplicação monta `/order/202507/orders?ids=a,b`, removendo repetidos
-    e respeitando o limite de 50 IDs por chamada da documentação. Há um
-    seletor de versão do endpoint (**202507** ou **202309**) — as duas
-    recebem `ids` na query e devolvem a mesma estrutura, então a escolha
-    não muda nada quanto à assinatura.
+    e respeitando o limite de 50 IDs por chamada da documentação.
     O `ids` já sai no caminho porque **faz parte da query assinada**:
     acrescentá-lo depois da assinatura invalidaria o `sign`.
+  - *Transações*: informe o `order_id` de **um único** pedido e a
+    aplicação monta `/finance/202501/orders/<id>/statement_transactions`.
+    O ID vai no path, como no anúncio — sem parâmetro extra na query.
+  - *Extrato*: informe o `statement_id` e a aplicação monta
+    `/finance/202501/statements/<id>/statement_transactions` já com
+    `sort_field=order_create_time` (obrigatório, e o único valor aceito),
+    `page_size` e `sort_order`; há um campo opcional para o `page_token`
+    da página seguinte. O ID fica no **meio** do caminho, então colar o
+    path inteiro é lido de `/statements/<id>/`, não do último segmento.
+    O endpoint exige o escopo `seller.finance.info` no app.
 
-  Nos dois casos há botão de copiar, e o caminho gerado é o que vai para o
-  sistema interno de assinatura.
+  Em todos os casos há botão de copiar, e a URL gerada (com o host
+  `https://open-api.tiktokglobalshop.com`) é o que vai para o sistema
+  interno de assinatura.
 - **Tipo de recurso detectado pelo path** da URL assinada, não pela aba
   escolhida: colar uma URL de pedido com a aba de anúncio aberta continua
-  funcionando, e a validação passa a exigir `ids`.
-- **Validação antes de enviar**: bloqueia placeholder `{product_id}` não
-  substituído e parâmetros obrigatórios ausentes (`shop_cipher`, `app_key`,
+  funcionando, e a validação passa a exigir `ids`. Os dois endpoints de
+  `/finance/` terminam em `/statement_transactions` e se distinguem pelo
+  segmento do meio: `/orders/<id>` são as transações de um pedido,
+  `/statements/<id>` são as do repasse inteiro.
+- **Validação antes de enviar**: bloqueia placeholder não substituído
+  (`{product_id}`, `{statement_id}` ou outro no mesmo formato) e
+  parâmetros obrigatórios ausentes (`shop_cipher`, `app_key`,
   `timestamp`, `sign`); avisa (sem bloquear) quando o `timestamp` tem mais
   de 4 minutos.
 - **Separador de query codificado no path** (`%3F` no lugar de `?`, `%26`
@@ -140,8 +155,8 @@ path + query intactos.
   explica isso e oferece um botão que reconstrói a URL com os separadores
   literais, para diagnosticar se a assinatura em si está correta.
 - **Painel de parâmetros** sempre visível com nome e valor brutos, para
-  conferir que são exatamente os esperados e nada a mais (4 para anúncio,
-  5 para pedidos por causa do `ids`).
+  conferir que são exatamente os esperados e nada a mais (4 para anúncio e
+  para transações, 5 para pedidos por causa do `ids`).
 - **Erros traduzidos**: `106001`/`10008` (assinatura), `36009004` (token),
   `12000000` (`shop_cipher`), `21008111` (pedido de outra loja), além dos
   transitórios do Get Order Detail (`10002014/15`, `10037002/3/4`,
@@ -152,26 +167,77 @@ path + query intactos.
     tabela de SKUs (com botão de copiar a coluna `seller_sku`), descrição
     sanitizada com DOMPurify, atributos, dimensões/peso.
   - *Pedidos*: um cartão por pedido com status, datas, entrega, rastreio,
-    pagamento e destinatário. IDs solicitados que não voltaram na resposta
-    são sinalizados. A tabela de itens **agrupa por SKU e mostra a
-    quantidade**: cada entrada de `line_items` é uma unidade (2 camisetas
-    iguais vêm como duas entradas), então a lista crua repetiria linhas sem
-    informar quantidade. O botão copia uma linha por SKU, que é o formato
-    usado para cruzar com o cadastro do ERP.
-- **Taxas da venda**: comissão, taxa de indicação, taxa de transação,
-  comissão de afiliado e impostos do pedido liquidado, com os totais de
-  receita, frete e **repasse**. As rubricas são somadas a partir do
-  detalhamento por SKU, que é o único nível em que a API as devolve; as
-  zeradas (a maioria, porque variam por região e programa) ficam ocultas
-  atrás de um seletor. Cada linha mostra o nome da rubrica na API junto do
-  rótulo, já que é por ela que se procura na documentação.
-  - Isto **não** é o `payment` do pedido: lá está o lado do comprador
-    (preço, desconto, frete pago). O que a plataforma cobra do vendedor só
-    existe no módulo `finance`, que costuma exigir permissão própria na
-    autorização do app.
-  - Pedido ainda **não liquidado** não retorna nada aqui — os valores
-    estimados ficam em `/finance/202507/orders/unsettled`, que esta
-    aplicação não monta.
+    marcadores (COD, amostra, retido, endereço alterado…), destinatário
+    destrinchado (logradouro, número, bairro, cidade/UF pelo
+    `district_info`), bloco **fiscal e de pagamento** (CNPJ do
+    marketplace, `need_upload_invoice`, código do meio de pagamento e da
+    autorização) e **prazos** (RTS, TTS, coleta, cancelamento automático)
+    com quanto falta para cada um. IDs solicitados que não voltaram na
+    resposta são sinalizados. A tabela de itens **agrupa por SKU e mostra
+    a quantidade**: cada entrada de `line_items` é uma unidade (2
+    camisetas iguais vêm como duas entradas), então a lista crua repetiria
+    linhas sem informar quantidade; as colunas mostram a conta do item
+    (preço cheio, desconto de cada lado, total). O botão copia uma linha
+    por SKU, que é o formato usado para cruzar com o cadastro do ERP.
+  - *Transações*: resumo do pedido (receita, taxas/impostos, frete e
+    settlement) e uma tabela com uma linha por SKU. Clicar na linha expande
+    o detalhamento de receita, frete (incluindo componentes suplementares) e
+    taxas/impostos daquele SKU, escondendo os componentes zerados — só os
+    valores que efetivamente impactaram o settlement aparecem.
+  - *Extrato*: totais do repasse (valor a pagar, total repassado, reserva)
+    com a composição e a **conferência das fórmulas publicadas na
+    documentação** — receita − frete − taxas/impostos − ajustes = total
+    repassado, e total repassado + reserva = valor a pagar —, apontando
+    divergência em vez de escondê-la. Depois vêm os totais por tipo de
+    transação (pedido, reserva e cada tipo de ajuste, traduzidos) e a
+    tabela de transações, com detalhamento sob demanda: cada transação tem
+    ~70 campos e quase todos vêm zerados, então só os **diferentes de
+    zero** aparecem, com a contagem dos omitidos. O botão "copiar para
+    planilha" gera uma linha por transação com os valores brutos, para
+    reconciliar no Excel.
+
+    A paginação é o ponto onde este endpoint difere dos demais: o
+    `page_token` faz parte da query assinada, então **não** dá para
+    avançar página dentro do app. Quando a resposta traz
+    `next_page_token`, a tela monta a URL da página seguinte — com o mesmo
+    `page_size` e `sort_order` — pronta para assinar.
+- **Extrato financeiro do pedido** ([`src/lib/orderStatement.ts`](src/lib/orderStatement.ts)),
+  no cartão de pedidos, em três leituras que se completam:
+  1. *Extrato do vendedor* — crédito × débito e **total líquido a
+     receber**, no mesmo formato do extrato oficial, mas mostrando de qual
+     campo do JSON veio cada linha e escondendo por padrão as linhas
+     zeradas.
+  2. *O que o comprador pagou* — a conta passo a passo (itens − descontos,
+     frete cheio − subsídios, taxas), com cada seção **conferida contra o
+     campo que a API já devolve pronto** (`sub_total`, `shipping_fee`,
+     `total_amount`). Divergência aparece em vermelho com os dois valores.
+  3. *Quem pagou o frete* — comprador, plataforma e vendedor separados.
+     Em pedido com etiqueta do TikTok (`shipping_type: TIKTOK`) a
+     plataforma contrata e paga o envio, então o frete cobrado do
+     comprador **entra como crédito e volta como débito**, fechando em
+     zero — é assim que o extrato oficial fecha o mesmo pedido.
+
+  Há ainda um bloco de *conferências* cruzando `line_items[]` com
+  `payment` (soma dos itens × `sub_total`, descontos, `sub_total` + frete ×
+  `total_amount`).
+
+  ⚠️ **Comissões e taxas de venda não existem no Get Order Detail** —
+  nenhum campo do pedido carrega esse valor. O número oficial está nas
+  *transações do pedido*
+  (`/finance/202501/orders/{order_id}/statement_transactions`, a consulta
+  do item anterior), que trazem receita, taxas e `settlement_amount` já
+  apurados. Para uma estimativa sem uma segunda consulta, o campo de
+  comissão aceita **percentual** (`36%`, aplicado sobre o total pago) ou
+  **valor** (`6,82`), e o resultado sai sempre marcado como informado;
+  enquanto nada for preenchido, o líquido é exibido como um teto. O
+  percentual fica em `localStorage` — é o mesmo para a loja toda; o valor
+  absoluto não persiste, porque é específico daquele pedido.
+
+  Todo o dinheiro é somado em **inteiros de escala 4**
+  ([`src/lib/money.ts`](src/lib/money.ts)): com `Number` direto, somar os
+  decimais da API acumula erro binário e o total deixa de bater com
+  `total_amount` por centavos — justamente a conferência que a tela existe
+  para fazer.
 - **Diagnóstico de integração**: alertas automáticos de `external_product_id`
   ambíguo, `seller_sku` vazio/duplicado, estoque baixo, preços divergentes,
   EAN ausente e descrição escrita para uma única cor.
@@ -187,10 +253,13 @@ api/
   tts.ts                 # proxy de produção (Vercel Edge Function)
 src/
   types/tiktok.ts        # tipagem completa da resposta da API
-  lib/endpoint.ts        # monta os endpoints de anúncio e de pedidos
+  lib/endpoint.ts        # monta os endpoints de anúncio, pedidos, transações e extrato
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
   lib/orders.ts          # agrupamento dos itens do pedido por SKU
-  lib/fees.ts            # leitura das taxas (soma decimal exata, sem float)
+  lib/money.ts           # aritmética exata sobre os valores em string da API
+  lib/statements.ts      # leitura dos valores do extrato de repasse
+  lib/statementLabels.ts # tradução dos ~70 campos do extrato
+  lib/orderStatement.ts  # extrato do pedido: crédito × débito e conferências
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
   lib/*.test.ts          # testes das funções puras
   lib/api.ts             # camada de chamada (fetch via proxy /api/tts)
@@ -198,18 +267,18 @@ src/
   lib/diagnostics.ts     # verificações de inconsistência de cadastro
   lib/format.ts          # formatação (datas BR, preço, idade)
   components/            # interface em cartões
-  components/FeesView.tsx # taxas, impostos e repasse do pedido
   App.tsx                # estado da aplicação e layout
 ```
 
 ## Referência da OpenAPI para agentes de código
 
 `.claude/skills/tts-openapi-guide/` guarda um recorte da especificação
-OpenAPI oficial do TikTok Shop — só os módulos `product`, `order` e
-`finance`, que são os que este app consulta. Serve para conferir versão de endpoint, parâmetros
-obrigatórios e schema de resposta **sem chutar campo**: por exemplo, que
-`/order/202507/orders` e `/order/202309/orders` aceitam no máximo 50 ids em
-`ids`, ou quais campos `src/types/tiktok.ts` deve espelhar.
+OpenAPI oficial do TikTok Shop — os módulos `product`, `order` e `finance`,
+que são os que este app consulta (90 dos 405 paths do snapshot completo).
+Serve para conferir versão de endpoint, parâmetro obrigatório e schema de
+resposta **sem chutar campo**: quais versões de `/order` e `/finance`
+existem, que `ids` aceita no máximo 50 por chamada, ou quais campos do
+detalhamento o extrato pode trazer.
 
 É uma cópia (MIT) das skills publicadas pela ByteDance em
 `@tts-open-toolkit/cli`. Para reinstalar o conjunto completo, com os demais
@@ -219,5 +288,7 @@ módulos (logistics, return_refund, fulfillment, …):
 npx @tts-open-toolkit/cli skill add --target .claude/skills
 ```
 
-Documentação que não estiver no recorte fica no docv2 oficial:
+O comando só copia arquivos — não altera `settings.json` nem o código do
+projeto. Documentação que não estiver no recorte fica no docv2 oficial:
 `https://partner.tiktokshop.com/docv2/page/{api}-{versão}`.
+
