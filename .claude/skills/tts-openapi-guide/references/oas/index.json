@@ -1,0 +1,90 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "tiktok shop openapi",
+    "description": "sdk for apis",
+    "version": "1.0.0"
+  },
+  "split_by": "first_level_path",
+  "total_paths": 90,
+  "module_count": 3,
+  "modules": [
+    {
+      "first_level_path": "finance",
+      "file": "paths/finance.json",
+      "path_count": 9,
+      "versions": [
+        "202309",
+        "202501",
+        "202504",
+        "202507"
+      ],
+      "sample_paths": [
+        "/finance/202309/orders/{order_id}/statement_transactions",
+        "/finance/202309/payments",
+        "/finance/202309/statements",
+        "/finance/202309/statements/{statement_id}/statement_transactions",
+        "/finance/202309/withdrawals"
+      ]
+    },
+    {
+      "first_level_path": "order",
+      "file": "paths/order.json",
+      "path_count": 9,
+      "versions": [
+        "202309",
+        "202406",
+        "202407",
+        "202507",
+        "202511"
+      ],
+      "sample_paths": [
+        "/order/202309/orders",
+        "/order/202309/orders/search",
+        "/order/202309/privileged_orders",
+        "/order/202406/orders/external_order_search",
+        "/order/202406/orders/external_orders"
+      ]
+    },
+    {
+      "first_level_path": "product",
+      "file": "paths/product.json",
+      "path_count": 72,
+      "versions": [
+        "202309",
+        "202312",
+        "202401",
+        "202404",
+        "202405",
+        "202407",
+        "202409",
+        "202411",
+        "202501",
+        "202502",
+        "202503",
+        "202505",
+        "202506",
+        "202507",
+        "202508",
+        "202509",
+        "202601"
+      ],
+      "sample_paths": [
+        "/product/202309/brands",
+        "/product/202309/brands/recommend",
+        "/product/202309/categories",
+        "/product/202309/categories/recommend",
+        "/product/202309/categories/{category_id}/attributes"
+      ]
+    }
+  ],
+  "pruned": {
+    "source": "@tts-open-toolkit/cli@0.1.7",
+    "kept_first_level_paths": [
+      "finance",
+      "order",
+      "product"
+    ],
+    "note": "Snapshot reduzido aos modulos usados por este projeto."
+  }
+}
