@@ -184,3 +184,23 @@ src/
   components/            # interface em cartões
   App.tsx                # estado da aplicação e layout
 ```
+
+## Referência da OpenAPI para agentes de código
+
+`.claude/skills/tts-openapi-guide/` guarda um recorte da especificação
+OpenAPI oficial do TikTok Shop — só os módulos `product` e `order`, que são
+os que este app consulta. Serve para conferir versão de endpoint, parâmetros
+obrigatórios e schema de resposta **sem chutar campo**: por exemplo, que
+`/order/202507/orders` e `/order/202309/orders` aceitam no máximo 50 ids em
+`ids`, ou quais campos `src/types/tiktok.ts` deve espelhar.
+
+É uma cópia (MIT) das skills publicadas pela ByteDance em
+`@tts-open-toolkit/cli`. Para reinstalar o conjunto completo, com os demais
+módulos (logistics, finance, return_refund, …):
+
+```bash
+npx @tts-open-toolkit/cli skill add --target .claude/skills
+```
+
+Documentação que não estiver no recorte fica no docv2 oficial:
+`https://partner.tiktokshop.com/docv2/page/{api}-{versão}`.
