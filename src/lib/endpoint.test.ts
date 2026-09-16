@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOrderEndpoint,
+  buildOrderFeesEndpoint,
   buildProductEndpoint,
+  cleanOrderFeesId,
   cleanProductId,
   detectResourceKind,
   MAX_ORDER_IDS,
@@ -86,14 +88,65 @@ describe("buildOrderEndpoint", () => {
   });
 });
 
+describe("buildOrderFeesEndpoint", () => {
+  it("monta o endpoint de taxas com o pedido no path", () => {
+    expect(buildOrderFeesEndpoint("576461413038785752")).toEqual({
+      ok: true,
+      path: "/finance/202501/orders/576461413038785752/statement_transactions",
+    });
+  });
+
+  it("aceita a versão anterior do endpoint", () => {
+    const result = buildOrderFeesEndpoint("576461413038785752", "202309");
+    expect(result.ok && result.path).toBe(
+      "/finance/202309/orders/576461413038785752/statement_transactions",
+    );
+  });
+
+  it("recusa código vazio ou não numérico", () => {
+    expect(buildOrderFeesEndpoint("   ").ok).toBe(false);
+    expect(buildOrderFeesEndpoint("576461-ABC").ok).toBe(false);
+  });
+});
+
+describe("cleanOrderFeesId", () => {
+  it("pega o ID do pedido, não o último segmento do path de taxas", () => {
+    expect(
+      cleanOrderFeesId("/finance/202501/orders/576461413038785752/statement_transactions"),
+    ).toBe("576461413038785752");
+  });
+
+  it("funciona com a URL assinada inteira colada", () => {
+    expect(
+      cleanOrderFeesId(
+        "https://open-api.tiktokglobalshop.com/finance/202501/orders/576461413038785752/statement_transactions?app_key=k&sign=s",
+      ),
+    ).toBe("576461413038785752");
+  });
+
+  it("aceita o ID puro", () => {
+    expect(cleanOrderFeesId(" 576461413038785752 ")).toBe("576461413038785752");
+  });
+});
+
 describe("detectResourceKind", () => {
   it("reconhece produto e pedido pelo path", () => {
     expect(detectResourceKind("/product/202309/products/1")).toBe("product");
     expect(detectResourceKind("/order/202507/orders")).toBe("order");
   });
 
+  it("reconhece as taxas por pedido, em qualquer versão", () => {
+    expect(detectResourceKind("/finance/202501/orders/123/statement_transactions")).toBe("fees");
+    expect(detectResourceKind("/finance/202309/orders/123/statement_transactions")).toBe("fees");
+  });
+
   it("classifica endpoints desconhecidos como other", () => {
+    // O restante do módulo finance não tem exibição dedicada: cai no JSON bruto.
     expect(detectResourceKind("/finance/202309/statements")).toBe("other");
+    expect(detectResourceKind("/finance/202507/orders/unsettled")).toBe("other");
+    expect(detectResourceKind("/finance/202309/statements/456/statement_transactions")).toBe(
+      "other",
+    );
   });
 });
 

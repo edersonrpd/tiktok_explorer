@@ -7,7 +7,7 @@ description: Use this skill when the user asks about TikTok Shop OpenAPI endpoin
 
 Use this skill to answer exact TikTok Shop OpenAPI structure questions and avoid selecting a stale endpoint version.
 
-Cópia vendorizada (reduzida a `product` e `order`) do OAS distribuído em
+Cópia vendorizada (reduzida a `product`, `order` e `finance`) do OAS distribuído em
 `@tts-open-toolkit/cli@0.1.7` — ByteDance, MIT. Para qualquer outro módulo,
 não há baseline local: vá direto ao docv2 oficial e relate a lacuna.
 
@@ -50,7 +50,7 @@ Online doc URL:
 - `references/oas-guide.md` explains how to search and read the split OAS references.
 - `references/oas/index.json` maps first-level API paths to split OAS files.
 - `references/oas/paths/*.json` contains the OAS path subsets split by first-level API path.
-  Aqui só existem `product.json` e `order.json`.
+  Aqui só existem `product.json`, `order.json` e `finance.json`.
 
 ## Atualizar o snapshot
 

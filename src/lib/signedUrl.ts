@@ -30,6 +30,9 @@ export const SIGNATURE_PARAMS = ["shop_cipher", "app_key", "timestamp", "sign"] 
 const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
   order: ["ids"],
+  // Em /finance/.../orders/{id}/statement_transactions o pedido vai no
+  // path, então não há parâmetro de negócio na query.
+  fees: [],
   other: [],
 };
 

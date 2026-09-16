@@ -3,7 +3,13 @@ import { fetchResource, type FetchFailure } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
 import { detectResourceKind, type ResourceKind } from "./lib/endpoint";
 import { parseQueryParams, signatureAgeSeconds, type NormalizedUrl } from "./lib/signedUrl";
-import type { Order, OrderListData, Product, TikTokApiResponse } from "./types/tiktok";
+import type {
+  Order,
+  OrderFeesData,
+  OrderListData,
+  Product,
+  TikTokApiResponse,
+} from "./types/tiktok";
 import { EndpointBuilder } from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
 import { ErrorDisplay } from "./components/ErrorDisplay";
@@ -14,6 +20,7 @@ import { DescriptionCard } from "./components/DescriptionCard";
 import { AttributesCard, PackageCard } from "./components/AttributesCard";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { OrderView } from "./components/OrderView";
+import { FeesView } from "./components/FeesView";
 import { RawJson } from "./components/RawJson";
 import { HistoryList } from "./components/HistoryList";
 import { Card } from "./components/ui";
@@ -25,6 +32,7 @@ const HISTORY_LIMIT = 10;
 export type LoadedResource =
   | { kind: "product"; product: Product }
   | { kind: "order"; orders: Order[]; requestedIds: string[] }
+  | { kind: "fees"; fees: OrderFeesData }
   | { kind: "other" };
 
 export interface HistoryEntry {
@@ -101,6 +109,11 @@ export default function App() {
         resource = { kind: "order", orders, requestedIds: requestedOrderIds(normalized) };
         label = `${orders.length} pedido(s)`;
         subtitle = orders.map((o) => o.id).join(", ") || "nenhum retornado";
+      } else if (kind === "fees") {
+        const fees = result.data as OrderFeesData;
+        resource = { kind: "fees", fees };
+        label = `Taxas do pedido ${fees.order_id ?? "—"}`;
+        subtitle = `${fees.sku_transactions?.length ?? 0} SKU(s) liquidado(s)`;
       } else {
         resource = { kind: "other" };
         label = "Resposta bruta";
@@ -144,7 +157,8 @@ export default function App() {
       <header className="border-b border-slate-200 bg-white px-6 py-3">
         <h1 className="text-base font-bold">TikTok Shop Viewer</h1>
         <p className="text-xs text-slate-500">
-          Consulta de anúncios e pedidos via URL pré-assinada — a query string nunca é modificada.
+          Consulta de anúncios, pedidos e taxas via URL pré-assinada — a query string nunca é
+          modificada.
         </p>
       </header>
 
@@ -214,6 +228,8 @@ export default function App() {
                   requestedIds={view.resource.requestedIds}
                 />
               )}
+
+              {view.resource.kind === "fees" && <FeesView fees={view.resource.fees} />}
 
               {view.resource.kind === "other" && (
                 <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">

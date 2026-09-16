@@ -6,9 +6,27 @@
     "version": "1.0.0"
   },
   "split_by": "first_level_path",
-  "total_paths": 81,
-  "module_count": 2,
+  "total_paths": 90,
+  "module_count": 3,
   "modules": [
+    {
+      "first_level_path": "finance",
+      "file": "paths/finance.json",
+      "path_count": 9,
+      "versions": [
+        "202309",
+        "202501",
+        "202504",
+        "202507"
+      ],
+      "sample_paths": [
+        "/finance/202309/orders/{order_id}/statement_transactions",
+        "/finance/202309/payments",
+        "/finance/202309/statements",
+        "/finance/202309/statements/{statement_id}/statement_transactions",
+        "/finance/202309/withdrawals"
+      ]
+    },
     {
       "first_level_path": "order",
       "file": "paths/order.json",
@@ -63,6 +81,7 @@
   "pruned": {
     "source": "@tts-open-toolkit/cli@0.1.7",
     "kept_first_level_paths": [
+      "finance",
       "order",
       "product"
     ],

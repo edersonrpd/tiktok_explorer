@@ -8,7 +8,7 @@ Snapshot **reduzido** do OAS distribuído em `@tts-open-toolkit/cli@0.1.7`
 (ByteDance, MIT). Só os módulos que este projeto consulta foram mantidos.
 
 - OpenAPI version: 3.0.0
-- Path count: 81 (do total de 405 do snapshot original)
+- Path count: 90 (do total de 405 do snapshot original)
 - Split index: `references/oas/index.json`
 - Split files: `references/oas/paths/<first_level_path>.json`
 
@@ -16,8 +16,9 @@ Snapshot **reduzido** do OAS distribuído em `@tts-open-toolkit/cli@0.1.7`
 | --- | --- | ---: |
 | product | `paths/product.json` | 72 |
 | order | `paths/order.json` | 9 |
+| finance | `paths/finance.json` | 9 |
 
-Módulos **não** incluídos aqui (logistics, fulfillment, finance, return_refund,
+Módulos **não** incluídos aqui (logistics, fulfillment, return_refund,
 affiliate*, analytics, promotion, seller, authorization, e os demais do
 snapshot original): trate como lacuna de cobertura e responda pelo docv2
 oficial, conforme `## Source Priority`. Para reidratar o snapshot completo:

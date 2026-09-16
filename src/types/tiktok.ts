@@ -289,3 +289,64 @@ export interface OrderListData {
 }
 
 export type OrderResponse = TikTokApiResponse<OrderListData>;
+
+/**
+ * Tipagem do endpoint de taxas
+ * GET /finance/202501/orders/{order_id}/statement_transactions.
+ *
+ * POR QUE OS GRUPOS DE TAXA SÃO UM `Record` E NÃO CAMPOS FIXOS:
+ * o `fee_tax_breakdown` tem mais de 40 rubricas possíveis e o próprio
+ * schema oficial marca boa parte delas como exclusivas de uma região
+ * (`referral_fee_amount` só US, `platform_commission_amount` só UK,
+ * `isr_amount`/`iva_amount` México, `pit_amount` no Sudeste Asiático...).
+ * Declarar campo a campo daria a impressão falsa de que todos chegam em
+ * toda resposta, e esconderia qualquer rubrica nova que o TikTok passe a
+ * enviar. Aqui cada grupo é um mapa chave → valor, e a exibição mostra o
+ * que de fato veio (ver src/lib/fees.ts).
+ */
+export type AmountBreakdown = Record<string, string | undefined>;
+
+export interface SkuFeeTaxBreakdown {
+  /** Taxas cobradas pela plataforma: comissões, referral, transação... */
+  fee?: AmountBreakdown;
+  /** Impostos retidos: VAT, IVA, ISR, PIT, aduaneiros... */
+  tax?: AmountBreakdown;
+}
+
+export interface SkuTransaction {
+  sku_id?: string;
+  sku_name?: string;
+  product_name?: string;
+  /** Quantidade do SKU incluída na liquidação (vem como string). */
+  quantity?: string;
+  statement_id?: string;
+  /** Receita do SKU: soma de `revenue_breakdown`. */
+  revenue_amount?: string;
+  /** Taxas + impostos do SKU: soma de `fee_tax_breakdown`. */
+  fee_tax_amount?: string;
+  /** Custos de frete do SKU: soma de `shipping_cost_breakdown`. */
+  shipping_cost_amount?: string;
+  /** Repasse do SKU: receita − frete − taxas. */
+  settlement_amount?: string;
+  fee_tax_breakdown?: SkuFeeTaxBreakdown;
+  revenue_breakdown?: AmountBreakdown;
+  shipping_cost_breakdown?: AmountBreakdown;
+}
+
+export interface OrderFeesData {
+  order_id?: string;
+  order_create_time?: number;
+  currency?: string;
+  /** Receita do pedido no momento da liquidação. */
+  revenue_amount?: string;
+  /** Total de taxas e impostos cobrados pela plataforma. */
+  fee_and_tax_amount?: string;
+  /** Custos de frete no momento da liquidação. */
+  shipping_cost_amount?: string;
+  /** Repasse: `revenue_amount` − `shipping_cost_amount` − `fee_and_tax_amount`. */
+  settlement_amount?: string;
+  total_count?: number;
+  sku_transactions?: SkuTransaction[];
+}
+
+export type OrderFeesResponse = TikTokApiResponse<OrderFeesData>;

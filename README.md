@@ -1,8 +1,8 @@
 # tiktok-product-viewer
 
-Aplicação web (React + Vite + TypeScript) para consultar **anúncios e
-pedidos** da API do TikTok Shop a partir de uma **URL já assinada** por um
-sistema interno, exibindo o resultado de forma legível.
+Aplicação web (React + Vite + TypeScript) para consultar **anúncios,
+pedidos e taxas** da API do TikTok Shop a partir de uma **URL já assinada**
+por um sistema interno, exibindo o resultado de forma legível.
 
 Endpoints suportados:
 
@@ -10,6 +10,7 @@ Endpoints suportados:
 |---|---|---|
 | Anúncio | `/product/202309/products/{id}` | no path |
 | Pedidos | `/order/202507/orders?ids=a,b` (ou `202309`) | na **query** (`ids`) |
+| Taxas | `/finance/202501/orders/{id}/statement_transactions` (ou `202309`) | no path |
 
 Esta aplicação **não** calcula `sign` e **não** pede `app_secret`. O fluxo é
 sempre: colar a URL assinada + o access token → GET → resultado.
@@ -157,6 +158,20 @@ path + query intactos.
     iguais vêm como duas entradas), então a lista crua repetiria linhas sem
     informar quantidade. O botão copia uma linha por SKU, que é o formato
     usado para cruzar com o cadastro do ERP.
+- **Taxas da venda**: comissão, taxa de indicação, taxa de transação,
+  comissão de afiliado e impostos do pedido liquidado, com os totais de
+  receita, frete e **repasse**. As rubricas são somadas a partir do
+  detalhamento por SKU, que é o único nível em que a API as devolve; as
+  zeradas (a maioria, porque variam por região e programa) ficam ocultas
+  atrás de um seletor. Cada linha mostra o nome da rubrica na API junto do
+  rótulo, já que é por ela que se procura na documentação.
+  - Isto **não** é o `payment` do pedido: lá está o lado do comprador
+    (preço, desconto, frete pago). O que a plataforma cobra do vendedor só
+    existe no módulo `finance`, que costuma exigir permissão própria na
+    autorização do app.
+  - Pedido ainda **não liquidado** não retorna nada aqui — os valores
+    estimados ficam em `/finance/202507/orders/unsettled`, que esta
+    aplicação não monta.
 - **Diagnóstico de integração**: alertas automáticos de `external_product_id`
   ambíguo, `seller_sku` vazio/duplicado, estoque baixo, preços divergentes,
   EAN ausente e descrição escrita para uma única cor.
@@ -175,6 +190,7 @@ src/
   lib/endpoint.ts        # monta os endpoints de anúncio e de pedidos
   lib/signedUrl.ts       # normalização + validação da URL (funções puras)
   lib/orders.ts          # agrupamento dos itens do pedido por SKU
+  lib/fees.ts            # leitura das taxas (soma decimal exata, sem float)
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
   lib/*.test.ts          # testes das funções puras
   lib/api.ts             # camada de chamada (fetch via proxy /api/tts)
@@ -182,21 +198,22 @@ src/
   lib/diagnostics.ts     # verificações de inconsistência de cadastro
   lib/format.ts          # formatação (datas BR, preço, idade)
   components/            # interface em cartões
+  components/FeesView.tsx # taxas, impostos e repasse do pedido
   App.tsx                # estado da aplicação e layout
 ```
 
 ## Referência da OpenAPI para agentes de código
 
 `.claude/skills/tts-openapi-guide/` guarda um recorte da especificação
-OpenAPI oficial do TikTok Shop — só os módulos `product` e `order`, que são
-os que este app consulta. Serve para conferir versão de endpoint, parâmetros
+OpenAPI oficial do TikTok Shop — só os módulos `product`, `order` e
+`finance`, que são os que este app consulta. Serve para conferir versão de endpoint, parâmetros
 obrigatórios e schema de resposta **sem chutar campo**: por exemplo, que
 `/order/202507/orders` e `/order/202309/orders` aceitam no máximo 50 ids em
 `ids`, ou quais campos `src/types/tiktok.ts` deve espelhar.
 
 É uma cópia (MIT) das skills publicadas pela ByteDance em
 `@tts-open-toolkit/cli`. Para reinstalar o conjunto completo, com os demais
-módulos (logistics, finance, return_refund, …):
+módulos (logistics, return_refund, fulfillment, …):
 
 ```bash
 npx @tts-open-toolkit/cli skill add --target .claude/skills

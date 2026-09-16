@@ -7,9 +7,10 @@
  * `sign`, `app_key`, `shop_cipher` e `timestamp` são acrescentados pelo
  * sistema que assina.
  *
- * DIFERENÇA IMPORTANTE ENTRE OS DOIS ENDPOINTS:
+ * DIFERENÇA IMPORTANTE ENTRE OS ENDPOINTS:
  * - Produto: o ID vai no PATH  → /product/202309/products/{id}
  * - Pedidos: os IDs vão na QUERY → /order/202507/orders?ids=a,b
+ * - Taxas:   o ID vai no PATH  → /finance/202501/orders/{id}/statement_transactions
  *
  * No caso de pedidos, `ids` faz parte da query e portanto é assinado
  * junto com os demais parâmetros. Ele precisa estar presente ANTES da
@@ -34,10 +35,49 @@ export const ORDER_API_VERSION: OrderApiVersion = "202507";
 /** Limite de IDs por chamada, conforme a documentação do Get Order Detail. */
 export const MAX_ORDER_IDS = 50;
 
+/**
+ * Versões do endpoint de taxas (Get Transactions by Order), que é onde
+ * ficam comissão e demais taxas cobradas pela plataforma — o pagamento do
+ * pedido (`/order/...`) só traz o lado do comprador.
+ *
+ * As duas versões diferem no formato, não no conteúdo:
+ * - 202501 agrupa as taxas em `fee_tax_breakdown.fee` / `.tax` por SKU;
+ * - 202309 traz os mesmos valores como campos planos por transação, e
+ *   inclui algumas rubricas que não existem no agrupamento da 202501
+ *   (seguro de frete, confirmação de assinatura, custo FBM).
+ *
+ * Esta aplicação exibe a 202501; a 202309 continua disponível para montar
+ * o caminho e conferir o JSON bruto.
+ */
+export const FEES_API_VERSIONS = ["202501", "202309"] as const;
+export type FeesApiVersion = (typeof FEES_API_VERSIONS)[number];
+
+/** Versão padrão do endpoint de taxas (parte do path assinado). */
+export const FEES_API_VERSION: FeesApiVersion = "202501";
+
 /** Tipo de recurso que a aplicação sabe consultar e exibir. */
-export type ResourceKind = "product" | "order" | "other";
+export type ResourceKind = "product" | "order" | "fees" | "other";
 
 export type EndpointResult = { ok: true; path: string } | { ok: false; reason: string };
+
+/**
+ * Remove o que costuma vir junto ao colar: espaços, aspas, a query string
+ * e barras finais. Sobra o path (ou o ID puro, se foi só isso que veio).
+ */
+function stripPasteNoise(raw: string): string {
+  const value = raw.trim().replace(/^["'`<]+/, "").replace(/["'`>]+$/, "").trim();
+
+  const queryIndex = value.indexOf("?");
+  const withoutQuery = queryIndex === -1 ? value : value.slice(0, queryIndex);
+
+  return withoutQuery.replace(/\/+$/, "").trim();
+}
+
+/** Último segmento de um path — onde fica o ID nos endpoints por path. */
+function lastSegment(path: string): string {
+  const lastSlash = path.lastIndexOf("/");
+  return (lastSlash === -1 ? path : path.slice(lastSlash + 1)).trim();
+}
 
 /**
  * Extrai um ID de um valor colado. Aceita o ID puro, mas também tolera o
@@ -45,15 +85,7 @@ export type EndpointResult = { ok: true; path: string } | { ok: false; reason: s
  * antes da query, além de aspas e espaços de copiar/colar.
  */
 export function cleanProductId(raw: string): string {
-  let value = raw.trim().replace(/^["'`<]+/, "").replace(/["'`>]+$/, "").trim();
-
-  const queryIndex = value.indexOf("?");
-  if (queryIndex !== -1) value = value.slice(0, queryIndex);
-
-  const lastSlash = value.lastIndexOf("/");
-  if (lastSlash !== -1) value = value.slice(lastSlash + 1);
-
-  return value.trim();
+  return lastSegment(stripPasteNoise(raw));
 }
 
 /** Monta `/product/{versão}/products/{id}` ou explica por que não deu. */
@@ -129,6 +161,42 @@ export function buildOrderEndpoint(
 }
 
 /**
+ * Monta `/finance/{versão}/orders/{id}/statement_transactions`.
+ *
+ * Um pedido por chamada: o ID vai no path, então não há como pedir vários
+ * (ao contrário de `/order/...?ids=`). Para uma visão por repasse em vez
+ * de por pedido, o caminho é `/finance/202309/statements`, que esta
+ * aplicação não monta.
+ */
+export function buildOrderFeesEndpoint(
+  rawId: string,
+  version: FeesApiVersion = FEES_API_VERSION,
+): EndpointResult {
+  const id = cleanOrderFeesId(rawId);
+
+  if (id === "") {
+    return { ok: false, reason: "Informe o código do pedido (order id) para ver as taxas." };
+  }
+  if (!/^\d+$/.test(id)) {
+    return {
+      ok: false,
+      reason: `Código de pedido é composto só por números (ex.: 576461413038785752). Valor lido: "${id}".`,
+    };
+  }
+
+  return { ok: true, path: `/finance/${version}/orders/${id}/statement_transactions` };
+}
+
+/**
+ * Extrai o order id de um valor colado. Difere de `cleanProductId` porque
+ * aqui o ID não é o último segmento do path: colar o caminho inteiro de
+ * taxas terminaria em "statement_transactions".
+ */
+export function cleanOrderFeesId(raw: string): string {
+  return lastSegment(stripPasteNoise(raw).replace(/\/statement_transactions$/, ""));
+}
+
+/**
  * Descobre o tipo de recurso pelo path da URL assinada, para que a
  * validação e a exibição não dependam da aba selecionada — colar uma URL
  * de pedido com a aba de produto aberta continua funcionando.
@@ -136,5 +204,8 @@ export function buildOrderEndpoint(
 export function detectResourceKind(path: string): ResourceKind {
   if (path.startsWith("/product/")) return "product";
   if (path.startsWith("/order/")) return "order";
+  // Só a consulta por pedido tem exibição dedicada; /finance/.../statements
+  // e afins caem no JSON bruto.
+  if (/^\/finance\/\d{6}\/orders\/[^/]+\/statement_transactions$/.test(path)) return "fees";
   return "other";
 }
