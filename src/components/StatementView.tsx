@@ -14,8 +14,11 @@ import { TIKTOK_API_HOST } from "../lib/signedUrl";
 import {
   checkStatementFormulas,
   nonZeroEntries,
+  statementFileName,
   totalsByType,
+  transactionsCsv,
   transactionsTsv,
+  transactionsXlsx,
   hiddenFieldCount,
 } from "../lib/statements";
 import {
@@ -30,7 +33,7 @@ import {
 } from "../lib/statementLabels";
 import { formatEpochBR, formatEpochDateBR } from "../lib/format";
 import { formatMoney, parseMoney } from "../lib/money";
-import { Card, CopyButton } from "./ui";
+import { Card, CopyButton, DownloadButton } from "./ui";
 import { BreakdownBlock, FeeTaxBlock, Field, Highlight } from "./breakdown";
 
 /** Parâmetros da consulta que gerou esta página, para montar a próxima. */
@@ -71,7 +74,11 @@ export function StatementView({
       <StatementSummary data={data} transactions={transactions} />
       <NextPageCard data={data} query={query} />
       <TypeTotalsCard transactions={transactions} currency={data.currency} />
-      <TransactionsCard transactions={transactions} currency={data.currency} />
+      <TransactionsCard
+        transactions={transactions}
+        currency={data.currency}
+        statementId={data.id ?? query.statementId}
+      />
     </>
   );
 }
@@ -286,9 +293,11 @@ function TypeTotalsCard({
 function TransactionsCard({
   transactions,
   currency,
+  statementId,
 }: {
   transactions: StatementTransaction[];
   currency: string | undefined;
+  statementId: string;
 }) {
   if (transactions.length === 0) {
     return (
@@ -303,7 +312,22 @@ function TransactionsCard({
       title="Transações"
       icon={<FileSpreadsheet />}
       count={transactions.length}
-      actions={<CopyButton text={transactionsTsv(transactions)} label="Copiar para planilha" />}
+      actions={
+        <div className="flex items-center gap-2">
+          <DownloadButton
+            build={() => transactionsXlsx(transactions)}
+            filename={statementFileName(statementId, "xlsx")}
+            mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            label="Excel"
+          />
+          <DownloadButton
+            build={() => transactionsCsv(transactions)}
+            filename={statementFileName(statementId, "csv")}
+            label="CSV"
+          />
+          <CopyButton text={transactionsTsv(transactions)} label="Copiar" />
+        </div>
+      }
     >
       <div className="overflow-x-auto">
         <table className="tbl text-xs">

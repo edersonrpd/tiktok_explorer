@@ -3,7 +3,15 @@ import type {
   StatementTransaction,
   StatementTransactionsData,
 } from "../types/tiktok";
-import { FEE_REFERENCE_FIELDS } from "./statementLabels";
+import { FEE_REFERENCE_FIELDS, labelForType } from "./statementLabels";
+import {
+  exportFileName,
+  textCell,
+  toCsv,
+  toTsv,
+  toXlsx,
+  type ExportColumn,
+} from "./spreadsheet";
 import {
   addMoney,
   isZero,
@@ -191,6 +199,19 @@ export function readFeeTax(
   };
 }
 
+/**
+ * Quanto do total de tarifas/impostos a API não detalhou. Vai para a
+ * exportação como coluna própria: é o valor que o financeiro procuraria
+ * na mão ao reconstruir a taxa a partir das linhas e não chegar ao total.
+ */
+export function undetailedFeeTaxOf(
+  breakdown: FeeTaxBreakdown | undefined,
+  total: Money | undefined,
+): Money | undefined {
+  // O rótulo não importa para somar; só os valores entram na conta.
+  return readFeeTax(breakdown, total, (field) => field).reconciliation?.undetailed;
+}
+
 /** Totais por tipo de transação — a visão que responde "no que foi o desconto". */
 export interface TypeTotal {
   type: string;
@@ -276,40 +297,102 @@ export function checkStatementFormulas(data: StatementTransactionsData): Formula
   return checks;
 }
 
+/* ------------------------------------------------------------------ */
+/* Exportação para planilha                                            */
+/* ------------------------------------------------------------------ */
+
 /**
- * Uma linha por transação, separada por TAB, para colar direto numa
- * planilha e reconciliar com o ERP — o mesmo papel do botão que copia a
- * coluna `seller_sku` na tela de pedidos.
+ * Colunas da exportação do extrato, com cabeçalho em português. Mesma
+ * ideia da tela de a liquidar: a maquinaria dos três formatos está em
+ * spreadsheet.ts e aqui só se declara o que cada coluna é.
+ *
+ * A diferença em relação à outra tela está no que existe aqui e lá não:
+ * reserva (retida/liberada) e valores já REALIZADOS, sem o prefixo de
+ * estimativa — este repasse já foi fechado.
  */
+export const STATEMENT_COLUMNS: Array<ExportColumn<StatementTransaction>> = [
+  { header: "ID da transação", width: 22, cell: (tx) => textCell(tx.id) },
+  { header: "Tipo", width: 26, cell: (tx) => textCell(labelForType(tx.type)) },
+  { header: "Tipo (código)", width: 26, cell: (tx) => textCell(tx.type) },
+  {
+    header: "Pedido",
+    width: 22,
+    cell: (tx) => textCell(tx.order_id ?? tx.adjustment_order_id ?? tx.associated_order_id),
+  },
+  { header: "Ajuste", width: 22, cell: (tx) => textCell(tx.adjustment_id) },
+  { header: "Criado em", width: 18, cell: (tx) => ({ kind: "date", value: tx.order_create_time }) },
+  {
+    header: "Receita",
+    width: 16,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.revenue_amount) }),
+  },
+  {
+    header: "Custo de frete",
+    width: 16,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.shipping_cost_amount) }),
+  },
+  {
+    header: "Tarifas e impostos",
+    width: 20,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.fee_tax_amount) }),
+  },
+  {
+    // A mesma diferença que a tela mostra no detalhamento: o total inclui
+    // cobranças que nenhum campo de fee/tax reporta.
+    header: "Tarifas sem detalhamento",
+    width: 24,
+    cell: (tx) => ({
+      kind: "money",
+      value: undetailedFeeTaxOf(tx.fee_tax_breakdown, parseMoney(tx.fee_tax_amount)),
+    }),
+  },
+  {
+    header: "Ajuste (valor)",
+    width: 16,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.adjustment_amount) }),
+  },
+  {
+    header: "Repasse",
+    width: 16,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.settlement_amount) }),
+  },
+  { header: "ID da reserva", width: 22, cell: (tx) => textCell(tx.reserve_id) },
+  {
+    header: "Valor da reserva",
+    width: 18,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.reserve_amount) }),
+  },
+  // Cru, como o badge da tela mostra: COLLECTED / RELEASED.
+  { header: "Status da reserva", width: 18, cell: (tx) => textCell(tx.reserve_status) },
+  {
+    header: "Liberação prevista",
+    width: 20,
+    // Epoch em segundos, mas a API devolve como string neste campo.
+    cell: (tx) => ({ kind: "date", value: Number(tx.estimated_release_time) || undefined }),
+  },
+];
+
 export function transactionsTsv(transactions: StatementTransaction[]): string {
-  const header = [
-    "transaction_id",
-    "type",
-    "order_id",
-    "order_create_time",
-    "revenue",
-    "shipping_cost",
-    "fee_tax",
-    "adjustment",
-    "settlement",
-    "reserve",
-  ].join("\t");
+  return toTsv(STATEMENT_COLUMNS, transactions);
+}
 
-  const rows = transactions.map((tx) =>
-    [
-      tx.id,
-      tx.type ?? "",
-      tx.order_id ?? tx.adjustment_order_id ?? tx.associated_order_id ?? "",
-      tx.order_create_time !== undefined ? new Date(tx.order_create_time * 1000).toISOString() : "",
-      // Valor bruto: é ele que bate com a planilha, sem reformatação.
-      tx.revenue_amount ?? "",
-      tx.shipping_cost_amount ?? "",
-      tx.fee_tax_amount ?? "",
-      tx.adjustment_amount ?? "",
-      tx.settlement_amount ?? "",
-      tx.reserve_amount ?? "",
-    ].join("\t"),
-  );
+export function transactionsCsv(transactions: StatementTransaction[]): string {
+  return toCsv(STATEMENT_COLUMNS, transactions);
+}
 
-  return [header, ...rows].join("\n");
+export function transactionsXlsx(
+  transactions: StatementTransaction[],
+  modified?: Date,
+): Uint8Array {
+  return toXlsx(STATEMENT_COLUMNS, transactions, "Extrato", modified);
+}
+
+/** O ID do extrato entra no nome: é comum conferir vários lado a lado. */
+export function statementFileName(
+  statementId: string | undefined,
+  extension: "csv" | "xlsx",
+  now?: Date,
+): string {
+  const base = statementId === undefined || statementId === "" ? "extrato" : `extrato-${statementId}`;
+  return exportFileName(base, extension, now);
 }

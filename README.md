@@ -207,7 +207,11 @@ path + query intactos.
     ~70 campos e quase todos vêm zerados, então só os **diferentes de
     zero** aparecem, com a contagem dos omitidos. O bloco de tarifas e
     impostos fecha a conta contra `fee_tax_amount` — a mesma conferência
-    descrita em *A liquidar*, com o mesmo componente. O botão "copiar para
+    descrita em *A liquidar*, com o mesmo componente. A exportação
+    também é a mesma (*Excel*, *CSV* e *Copiar*, cabeçalhos em
+    português), com as colunas que só existem aqui: reserva, status da
+    reserva e liberação prevista. O arquivo leva o ID do extrato no
+    nome, porque é comum conferir vários lado a lado. O botão "copiar para
     planilha" gera uma linha por transação com os valores brutos, para
     reconciliar no Excel.
 
@@ -295,7 +299,8 @@ path + query intactos.
 
   - **Exportação da tabela** em três formatos, com **cabeçalhos em
     português** e sempre do que está na tela (se você filtrou 3 pedidos,
-    são esses 3 que saem):
+    são esses 3 que saem). As duas telas de finanças oferecem os mesmos
+    três botões:
     - *Excel* gera um `.xlsx` de verdade. É o formato a preferir: número
       vai como **número** e data como **data**, então não existe a questão
       de ponto ou vírgula decimal — quem decide a exibição é o Excel, pelo
@@ -310,10 +315,12 @@ path + query intactos.
     - *Copiar* mantém o TAB com ponto decimal, para colar numa planilha já
       aberta sem passar pelo assistente de importação.
 
-    As três saídas vêm da **mesma** definição de colunas
-    ([`src/lib/unsettled.ts`](src/lib/unsettled.ts)), em que cada célula
-    declara o seu tipo — é isso que deixa o `.xlsx` gravar número como
-    número sem que os outros dois formatos divirjam dele.
+    As três saídas vêm da **mesma** definição de colunas, em que cada
+    célula declara o seu tipo — é isso que deixa o `.xlsx` gravar número
+    como número sem que os outros dois formatos divirjam dele. A
+    maquinaria é genérica
+    ([`src/lib/spreadsheet.ts`](src/lib/spreadsheet.ts)); cada tela só
+    declara as suas colunas.
 
     A coluna *Tipo* sai traduzida, com *Tipo (código)* ao lado: o rótulo é
     o que a pessoa lê, o código é o que filtra e agrupa numa tabela
@@ -385,6 +392,7 @@ src/
   lib/money.ts           # aritmética exata sobre os valores em string da API
   lib/statements.ts      # leitura dos valores do extrato de repasse
   lib/unsettled.ts       # leitura das transações a liquidar (tudo estimado)
+  lib/spreadsheet.ts     # exportação da tabela nos três formatos (colunas tipadas)
   lib/xlsx.ts            # escrita de .xlsx (ZIP + OOXML), sem dependência
   lib/statementLabels.ts # tradução dos ~70 campos do extrato
   lib/orderStatement.ts  # extrato do pedido: crédito × débito e conferências

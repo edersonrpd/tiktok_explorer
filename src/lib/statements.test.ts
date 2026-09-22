@@ -4,8 +4,11 @@ import {
   nonZeroEntries,
   partitionFields,
   readFeeTax,
+  statementFileName,
   totalsByType,
+  transactionsCsv,
   transactionsTsv,
+  transactionsXlsx,
   hiddenFieldCount,
 } from "./statements";
 import { labelFrom } from "./statementLabels";
@@ -152,7 +155,15 @@ describe("checkStatementFormulas", () => {
 });
 
 describe("transactionsTsv", () => {
-  it("gera cabeçalho e uma linha por transação com os valores brutos", () => {
+  /** Lê a célula pelo NOME da coluna, não pela posição. */
+  const readRow = (tsv: string) => {
+    const [header, row] = tsv.split("\n");
+    const columns = header?.split("\t") ?? [];
+    const cells = row?.split("\t") ?? [];
+    return (name: string) => cells[columns.indexOf(name)];
+  };
+
+  it("gera cabeçalho em português e uma linha por transação", () => {
     const tsv = transactionsTsv([
       {
         id: "1636700041413599290",
@@ -164,19 +175,98 @@ describe("transactionsTsv", () => {
         settlement_amount: "130",
       },
     ]);
-    const lines = tsv.split("\n");
-    expect(lines).toHaveLength(2);
-    expect(lines[0]?.startsWith("transaction_id\ttype\torder_id")).toBe(true);
-    expect(lines[1]?.split("\t")).toContain("576463220456522968");
-    // Valor bruto, sem reformatação — é o que bate com a planilha.
-    expect(lines[1]?.split("\t")[8]).toBe("130");
+    expect(tsv.split("\n")).toHaveLength(2);
+
+    const at = readRow(tsv);
+    expect(at("Pedido")).toBe("576463220456522968");
+    expect(at("Tipo")).toBe("Pedido");
+    expect(at("Tipo (código)")).toBe("ORDER");
+    // Ponto decimal: o destino é colar numa planilha já aberta.
+    expect(at("Repasse")).toBe("130.00");
   });
 
   it("usa o pedido do ajuste ou da reserva quando não há order_id", () => {
     const tsv = transactionsTsv([
       { id: "1", type: "RESERVE", associated_order_id: "78217892102382101" },
     ]);
-    expect(tsv.split("\n")[1]?.split("\t")[2]).toBe("78217892102382101");
+    expect(readRow(tsv)("Pedido")).toBe("78217892102382101");
+  });
+
+  it("exporta a reserva, que só existe no extrato", () => {
+    const tsv = transactionsTsv([
+      {
+        id: "1",
+        type: "RESERVE",
+        reserve_id: "7238804564097517339",
+        reserve_amount: "-20",
+        reserve_status: "COLLECTED",
+        estimated_release_time: "1685548800",
+      },
+    ]);
+    const at = readRow(tsv);
+    expect(at("ID da reserva")).toBe("7238804564097517339");
+    expect(at("Valor da reserva")).toBe("-20.00");
+    expect(at("Status da reserva")).toBe("COLLECTED");
+    // O campo vem como string, mas é epoch: sai como data legível.
+    expect(at("Liberação prevista")).toMatch(/\d{2}\/\d{2}\/\d{4}/);
+  });
+
+  it("traz a diferença não detalhada das tarifas, como na tela", () => {
+    const tsv = transactionsTsv([
+      {
+        id: "1",
+        type: "ORDER",
+        fee_tax_amount: "-44.78",
+        fee_tax_breakdown: {
+          fee: {
+            affiliate_commission_amount: "-16.08",
+            affiliate_commission_before_pit_amount: "-16.08",
+            platform_commission_amount: "-11.35",
+            sfp_service_fee_amount: "-11.35",
+          },
+        },
+      },
+    ]);
+    expect(readRow(tsv)("Tarifas sem detalhamento")).toBe("-6.00");
+  });
+});
+
+describe("transactionsCsv e transactionsXlsx", () => {
+  const linha = {
+    id: "1636700041413599290",
+    type: "ORDER",
+    order_id: "576463220456522968",
+    revenue_amount: "200",
+    settlement_amount: "130",
+  };
+
+  it("o CSV usa ponto-e-vírgula e vírgula decimal, para o Excel pt-BR", () => {
+    const csv = transactionsCsv([linha]);
+    const [header, row] = csv.split("\r\n");
+    const columns = header?.split(";") ?? [];
+    const cells = row?.split(";") ?? [];
+    expect(cells[columns.indexOf("Repasse")]).toBe("130,00");
+    expect(csv).not.toContain("\t");
+  });
+
+  it("o xlsx sai como ZIP, que é o que um .xlsx é por dentro", () => {
+    const bytes = transactionsXlsx([linha]);
+    expect(bytes[0]).toBe(0x50); // P
+    expect(bytes[1]).toBe(0x4b); // K
+  });
+});
+
+describe("statementFileName", () => {
+  it("leva o ID do extrato no nome, para conferir vários lado a lado", () => {
+    expect(statementFileName("7238804564097517339", "xlsx", new Date(2026, 8, 22))).toBe(
+      "extrato-7238804564097517339-2026-09-22.xlsx",
+    );
+  });
+
+  it("cai num nome genérico quando a resposta não trouxe o ID", () => {
+    expect(statementFileName(undefined, "csv", new Date(2026, 8, 22))).toBe(
+      "extrato-2026-09-22.csv",
+    );
   });
 });
 
