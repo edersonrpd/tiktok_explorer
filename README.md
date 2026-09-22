@@ -244,6 +244,25 @@ path + query intactos.
     de datas desta consulta, porque o token foi emitido para aquele
     recorte.
 
+    ⚠️ **Não dá para consultar um pedido específico neste endpoint.** A
+    documentação não prevê parâmetro de `order_id` nem de `adjustment_id`
+    — os únicos recortes são `search_time_ge`/`search_time_lt` sobre
+    `order_create_time`. Procurar um pedido é, portanto: trazer a janela
+    em que ele foi criado e achá-lo na lista. Para isso a tabela tem uma
+    **busca local** que casa por trecho em todos os identificadores da
+    transação (o mesmo pedido pode aparecer como `order_id` numa linha e
+    como `adjustment_order_id` em outra) e aceita vários IDs colados de
+    planilha, para ver de uma vez quais daqueles pedidos ainda estão
+    pendentes. O botão de copiar exporta o que está filtrado.
+
+    Se o pedido não aparecer, são dois casos e a tela diz os dois: ou ele
+    está fora da janela consultada, ou **já foi liquidado** — uma vez
+    liquidada, a transação some desta consulta e passa a estar em
+    *Transações do pedido*
+    (`/finance/202501/orders/{order_id}/statement_transactions`), que é a
+    aba ao lado. Esta API também só devolve transações criadas a partir
+    de 01/01/2025.
+
 - **Extrato financeiro do pedido** ([`src/lib/orderStatement.ts`](src/lib/orderStatement.ts)),
   no cartão de pedidos, em três leituras que se completam:
   1. *Extrato do vendedor* — crédito × débito e **total líquido a

@@ -285,6 +285,48 @@ export function singleCurrency(transactions: UnsettledTransaction[]): string | u
 }
 
 /* ------------------------------------------------------------------ */
+/* Busca por pedido                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Filtra as transações JÁ CARREGADAS por ID.
+ *
+ * POR QUE A BUSCA É LOCAL: o endpoint não aceita filtro por pedido. Os
+ * únicos recortes que ele oferece são `search_time_ge`/`search_time_lt`
+ * sobre `order_create_time` — não existe parâmetro de `order_id` nem de
+ * `adjustment_id` na documentação. Então procurar um pedido específico é
+ * necessariamente: trazer a janela onde ele foi criado e achar a linha
+ * aqui dentro.
+ *
+ * Aceita vários termos separados por vírgula, espaço ou quebra de linha,
+ * para colar uma coluna inteira de planilha e ver quais daqueles pedidos
+ * ainda estão pendentes. Casa por trecho (não exige o ID inteiro) e
+ * procura em todos os identificadores da transação, além do `type` — o
+ * pedido pode aparecer como `order_id` numa linha e como
+ * `adjustment_order_id` em outra.
+ */
+export function filterTransactions(
+  transactions: UnsettledTransaction[],
+  query: string,
+): UnsettledTransaction[] {
+  const terms = query
+    .toLowerCase()
+    .split(/[\s,;]+/)
+    .filter((term) => term !== "");
+
+  if (terms.length === 0) return transactions;
+
+  return transactions.filter((tx) => {
+    const haystack = [tx.id, tx.order_id, tx.adjustment_id, tx.adjustment_order_id, tx.type]
+      .filter((value): value is string => value !== undefined && value !== "")
+      .join(" ")
+      .toLowerCase();
+
+    return terms.some((term) => haystack.includes(term));
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Exportação para planilha                                            */
 /* ------------------------------------------------------------------ */
 

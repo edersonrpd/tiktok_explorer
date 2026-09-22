@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   Hourglass,
   Layers,
+  Search,
 } from "lucide-react";
 import type { UnsettledTransaction, UnsettledTransactionsData } from "../types/tiktok";
 import { buildUnsettledEndpoint, type StatementSortOrder } from "../lib/endpoint";
@@ -16,6 +17,7 @@ import { hiddenFieldCount, nonZeroEntries } from "../lib/statements";
 import {
   canCompareSums,
   checkSums,
+  filterTransactions,
   isDelivered,
   pageSums,
   parseEstimatedSettlement,
@@ -375,6 +377,10 @@ function TransactionsCard({
   transactions: UnsettledTransaction[];
   currency: string | undefined;
 }) {
+  const [filter, setFilter] = useState("");
+  const visible = useMemo(() => filterTransactions(transactions, filter), [transactions, filter]);
+  const filtering = filter.trim() !== "";
+
   if (transactions.length === 0) {
     return (
       <Card title="Transações a liquidar" icon={<FileSpreadsheet />}>
@@ -390,9 +396,44 @@ function TransactionsCard({
     <Card
       title="Transações a liquidar"
       icon={<FileSpreadsheet />}
-      count={transactions.length}
-      actions={<CopyButton text={unsettledTsv(transactions)} label="Copiar para planilha" />}
+      count={visible.length}
+      // Copia o que está na tela: filtrou para conferir 3 pedidos, são
+      // esses 3 que vão para a planilha.
+      actions={<CopyButton text={unsettledTsv(visible)} label="Copiar para planilha" />}
     >
+      <label htmlFor="unsettled-filter" className="mb-1 block text-xs font-bold t-3">
+        Procurar pedido nesta página
+      </label>
+      <div className="mb-1 flex items-center gap-2">
+        <Search className="h-3.5 w-3.5 shrink-0 t-4" />
+        <input
+          id="unsettled-filter"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          spellCheck={false}
+          placeholder="576463220456522968 — ou vários, separados por vírgula/espaço"
+          className="inp font-mono"
+        />
+      </div>
+      <p className="mb-3 text-[11px] t-4">
+        A busca é <strong className="t-3">local</strong>, nas transações já carregadas: o endpoint
+        não aceita filtro por pedido, só a janela de datas. Se o pedido não aparecer, ou ele está
+        fora da janela consultada (ajuste as datas no passo 1 para a data de criação dele) ou já
+        foi liquidado — e aí ele sai desta consulta e passa a estar na aba{" "}
+        <strong className="t-3">Transações</strong>.
+      </p>
+
+      {filtering && (
+        <p className="mb-2 text-[11px] t-3">
+          {visible.length} de {transactions.length} transação(ões) desta página.
+        </p>
+      )}
+
+      {visible.length === 0 ? (
+        <p className="alert mt-1 px-3 py-2 text-xs t-2">
+          Nenhuma transação desta página casa com a busca.
+        </p>
+      ) : (
       <div className="overflow-x-auto">
         <table className="tbl text-xs">
           <thead>
@@ -409,12 +450,13 @@ function TransactionsCard({
             </tr>
           </thead>
           <tbody>
-            {transactions.map((tx) => (
+            {visible.map((tx) => (
               <TransactionRow key={tx.id} tx={tx} currency={currency} />
             ))}
           </tbody>
         </table>
       </div>
+      )}
       <p className="mt-2 text-[11px] t-4">
         Valores negativos são custos que serão descontados do repasse. Enquanto o pedido não é
         entregue, o frete estimado está incompleto e a liquidação aparece como política

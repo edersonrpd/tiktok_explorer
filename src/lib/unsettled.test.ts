@@ -3,6 +3,7 @@ import {
   canCompareSums,
   checkSums,
   checkTransactionFormula,
+  filterTransactions,
   isDelivered,
   pageSums,
   parseEstimatedSettlement,
@@ -286,5 +287,45 @@ describe("unsettledTsv", () => {
     const tsv = unsettledTsv([{ id: "1", unsettled_reason: "aguardando\tentrega\ndo pedido" }]);
     expect(tsv.split("\n")).toHaveLength(2);
     expect(tsv).toContain("aguardando entrega do pedido");
+  });
+});
+
+describe("filterTransactions", () => {
+  const rows: UnsettledTransaction[] = [
+    { id: "1", type: "ORDER", order_id: "576463220456522968" },
+    { id: "2", type: "PLATFORM_PENALTY", adjustment_id: "7238804564097517332",
+      adjustment_order_id: "576463220456522969" },
+    { id: "3", type: "ORDER", order_id: "111111111111111111" },
+  ];
+
+  it("devolve tudo quando a busca está vazia", () => {
+    expect(filterTransactions(rows, "   ")).toHaveLength(3);
+  });
+
+  it("acha o pedido pelo order_id", () => {
+    expect(filterTransactions(rows, "576463220456522968").map((t) => t.id)).toEqual(["1"]);
+  });
+
+  it("acha o pedido quando ele aparece como adjustment_order_id", () => {
+    // O mesmo pedido pode estar numa linha como order_id e em outra como
+    // o pedido associado a um ajuste.
+    expect(filterTransactions(rows, "576463220456522969").map((t) => t.id)).toEqual(["2"]);
+  });
+
+  it("casa por trecho, sem exigir o ID inteiro", () => {
+    expect(filterTransactions(rows, "5764632204565229").map((t) => t.id)).toEqual(["1", "2"]);
+  });
+
+  it("aceita vários IDs colados de planilha", () => {
+    const found = filterTransactions(rows, "576463220456522968, 111111111111111111");
+    expect(found.map((t) => t.id)).toEqual(["1", "3"]);
+  });
+
+  it("também filtra pelo tipo, sem diferenciar maiúsculas", () => {
+    expect(filterTransactions(rows, "platform_penalty").map((t) => t.id)).toEqual(["2"]);
+  });
+
+  it("devolve vazio quando nada casa, em vez de devolver tudo", () => {
+    expect(filterTransactions(rows, "999")).toEqual([]);
   });
 });
