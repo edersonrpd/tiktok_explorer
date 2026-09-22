@@ -64,7 +64,7 @@ export function Sidebar({
   );
 }
 
-/** Access token (header x-tts-access-token), salvo neste navegador. */
+/** Access token (header x-tts-access-token), só na memória desta aba. */
 function TokenPanel({
   token,
   onTokenChange,
@@ -73,7 +73,7 @@ function TokenPanel({
   onTokenChange: (token: string) => void;
 }) {
   const [show, setShow] = useState(false);
-  const saved = token.trim() !== "";
+  const filled = token.trim() !== "";
 
   return (
     <div className="token-panel">
@@ -82,8 +82,8 @@ function TokenPanel({
         <label htmlFor="access-token" className="text-xs font-bold">
           Access token
         </label>
-        <span className={`ml-auto text-[10.5px] font-bold ${saved ? "token-ok" : "token-missing"}`}>
-          {saved ? "● salvo" : "● faltando"}
+        <span className={`ml-auto text-[10.5px] font-bold ${filled ? "token-ok" : "token-missing"}`}>
+          {filled ? "● informado" : "● faltando"}
         </span>
       </div>
       <div className="flex gap-1.5">
@@ -93,7 +93,10 @@ function TokenPanel({
           value={token}
           onChange={(e) => onTokenChange(e.target.value)}
           spellCheck={false}
-          autoComplete="off"
+          // "off" é ignorado em campo de senha; "new-password" impede o
+          // gerenciador de senhas do navegador de preencher sozinho.
+          autoComplete="new-password"
+          name="tts-access-token"
           placeholder="ROW_..."
           className="side-inp font-mono"
         />
@@ -107,7 +110,7 @@ function TokenPanel({
         </button>
       </div>
       <p className="text-[10.5px] leading-snug side-muted">
-        Vai no header x-tts-access-token e fica salvo neste navegador. A URL assinada não é salva.
+        Vai no header x-tts-access-token. Não é salvo: ao recarregar a página, o campo volta vazio.
       </p>
     </div>
   );

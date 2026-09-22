@@ -400,8 +400,9 @@ path + query intactos.
   EAN ausente e descrição escrita para uma única cor.
 - **Histórico da sessão**: últimas 10 consultas bem-sucedidas, em memória
   (some ao recarregar); clicar reexibe sem nova chamada.
-- O **access token** persiste em `localStorage`; a **URL assinada não** —
-  ela expira em minutos e guardá-la só geraria confusão.
+- Nem o **access token** nem a **URL assinada** são salvos: a página sempre
+  abre com os campos vazios. O token fica só na memória da aba (some ao
+  recarregar), e a URL expira em minutos.
 
 ## Estrutura
 

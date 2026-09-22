@@ -45,7 +45,8 @@ import { Card } from "./components/ui";
 import { JsonDrawer } from "./components/JsonDrawer";
 import { Toast } from "./components/Toast";
 
-const TOKEN_STORAGE_KEY = "tiktok-product-viewer.access-token";
+/** Chave onde versões anteriores guardavam o token — só para limpá-la. */
+const LEGACY_TOKEN_STORAGE_KEY = "tiktok-product-viewer.access-token";
 const HISTORY_LIMIT = 10;
 
 /** Resultado já discriminado pelo tipo de recurso consultado. */
@@ -163,11 +164,13 @@ function statementListPageQuery(normalized: NormalizedUrl): StatementListPageQue
 }
 
 export default function App() {
-  // O token persiste em localStorage; a URL assinada NÃO (expira em minutos).
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
+  // O token vive só na memória da aba: a página sempre abre com o campo
+  // vazio, e recarregar descarta o que foi colado. O token que versões
+  // anteriores deixaram no localStorage é apagado na primeira visita.
+  const [token, setToken] = useState("");
   useEffect(() => {
-    localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  }, [token]);
+    localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+  }, []);
 
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   // Aba do passo 1, escolhida no painel lateral. Depois de uma consulta ela
