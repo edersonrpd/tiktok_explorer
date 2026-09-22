@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Download } from "lucide-react";
 
 /** Cartão padrão do layout. */
 export function Card({
@@ -45,6 +45,50 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
     <button type="button" onClick={handleCopy} className={`chip ${copied ? "chip-active" : ""}`}>
       {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       {copied ? "Copiado" : label}
+    </button>
+  );
+}
+
+/**
+ * Baixa um texto como arquivo. Existe ao lado do CopyButton porque os
+ * dois resolvem problemas diferentes: copiar serve para colar numa
+ * planilha já aberta; baixar entrega o arquivo para anexar, versionar ou
+ * abrir com dois cliques — que é o que se faz com um fechamento
+ * financeiro.
+ *
+ * O BOM (\uFEFF) no início não é decorativo: sem ele o Excel lê o arquivo
+ * como Latin-1 e "Transações" vira "TransaÃ§Ãµes".
+ */
+export function DownloadButton({
+  text,
+  filename,
+  label,
+  mimeType = "text/csv;charset=utf-8",
+}: {
+  text: string;
+  filename: string;
+  label: string;
+  mimeType?: string;
+}) {
+  const handleDownload = () => {
+    const blob = new Blob([`\uFEFF${text}`], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    // Sem revoke o blob fica na memória até a aba fechar.
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <button type="button" onClick={handleDownload} className="chip">
+      <Download className="h-3 w-3" />
+      {label}
     </button>
   );
 }

@@ -1,5 +1,22 @@
 import type { UnsettledTransaction, UnsettledTransactionsData } from "../types/tiktok";
-import { addMoney, moneyEquals, moneyOrZero, parseMoney, subtractMoney, ZERO, type Money } from "./money";
+import {
+  addMoney,
+  moneyEquals,
+  moneyOrZero,
+  parseMoney,
+  subtractMoney,
+  toDecimalString,
+  ZERO,
+  type Money,
+} from "./money";
+import {
+  nonZeroEntries,
+  partitionFields,
+  reconcileBreakdown,
+  type AmountEntry,
+  type BreakdownReconciliation,
+} from "./statements";
+import { FEE_REFERENCE_FIELDS } from "./statementLabels";
 
 /**
  * Leitura de Get Unsettled Transactions (/finance/202507/orders/unsettled).
@@ -130,6 +147,65 @@ export function summarizeFormulas(transactions: UnsettledTransaction[]): Formula
   }
 
   return summary;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tarifas e impostos: o que a API detalha e o que ela não detalha     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Confere `est_fee_tax_amount` contra a soma das linhas de `fee` e `tax`.
+ *
+ * POR QUE ISSO PRECISA APARECER NA TELA: as duas contas não fecham, e não
+ * é erro de leitura. Em pedidos reais de uma loja BR observam-se duas
+ * coisas ao mesmo tempo:
+ *
+ * 1. `affiliate_commission_before_pit_amount` repete o valor de
+ *    `affiliate_commission_amount` (é a mesma comissão antes do IR do
+ *    criador). Somar as duas conta a comissão em dobro — por isso os
+ *    campos de `FEE_REFERENCE_FIELDS` ficam fora da soma.
+ * 2. Mesmo descontando a duplicação, sobra um valor FIXO por pedido que o
+ *    total inclui e que nenhum dos ~35 campos de `fee` reporta.
+ *
+ * Em vez de esconder a diferença, ela vira uma linha explícita. Somar as
+ * linhas na mão e não bater com o repasse, sem saber onde procurar, é o
+ * problema que esta função existe para evitar.
+ */
+export interface FeeTaxReading {
+  /** Linhas que somam, de `fee` e `tax` juntas, maior impacto primeiro. */
+  entries: AmountEntry[];
+  /** Linhas que só detalham outra (comissão de afiliado antes do IR, IR retido). */
+  reference: AmountEntry[];
+  /** Soma × total declarado, com a diferença não detalhada. */
+  reconciliation: BreakdownReconciliation | undefined;
+}
+
+export function readFeeTax(
+  tx: UnsettledTransaction,
+  labelFor: (field: string) => string,
+): FeeTaxReading {
+  const { main, reference } = partitionFields(tx.fee_tax_breakdown?.fee, FEE_REFERENCE_FIELDS);
+
+  const entries = [
+    ...nonZeroEntries(main, labelFor),
+    ...nonZeroEntries(tx.fee_tax_breakdown?.tax, labelFor),
+  ].sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+
+  return {
+    entries,
+    reference: nonZeroEntries(reference, labelFor),
+    reconciliation: reconcileBreakdown(entries, parseMoney(tx.est_fee_tax_amount)),
+  };
+}
+
+/**
+ * Quanto de `est_fee_tax_amount` a API não detalhou nesta transação.
+ * Vai para a exportação como coluna própria: é o valor que o financeiro
+ * procuraria na mão ao tentar reconstruir a taxa a partir das linhas.
+ */
+export function undetailedFeeTax(tx: UnsettledTransaction): Money | undefined {
+  // O rótulo não importa para somar; só os valores entram na conta.
+  return readFeeTax(tx, (field) => field).reconciliation?.undetailed;
 }
 
 /* ------------------------------------------------------------------ */
@@ -331,53 +407,121 @@ export function filterTransactions(
 /* ------------------------------------------------------------------ */
 
 /**
- * Uma linha por transação, separada por TAB, com os valores BRUTOS — é
- * assim que o financeiro reconcilia no Excel, sem reformatação pelo meio.
+ * Colunas da exportação, na ordem. Uma definição só alimenta as duas
+ * saídas — copiar (TAB, valores crus) e baixar (CSV pt-BR) —, para que o
+ * que o usuário cola e o que ele baixa nunca divirjam.
+ *
+ * `money: true` marca as colunas que o Excel deve tratar como número:
+ * na saída CSV o ponto decimal da API vira vírgula.
+ */
+const COLUMNS: Array<{
+  header: string;
+  money: boolean;
+  value: (tx: UnsettledTransaction) => string;
+}> = [
+  { header: "transaction_id", money: false, value: (tx) => tx.id },
+  { header: "type", money: false, value: (tx) => tx.type ?? "" },
+  { header: "status", money: false, value: (tx) => tx.status ?? "" },
+  { header: "currency", money: false, value: (tx) => tx.currency ?? "" },
+  {
+    header: "order_id",
+    money: false,
+    value: (tx) => tx.order_id ?? tx.adjustment_order_id ?? "",
+  },
+  { header: "adjustment_id", money: false, value: (tx) => tx.adjustment_id ?? "" },
+  { header: "order_create_time", money: false, value: (tx) => isoOrEmpty(tx.order_create_time) },
+  {
+    header: "order_delivery_time",
+    money: false,
+    value: (tx) => isoOrEmpty(tx.order_delivery_time),
+  },
+  {
+    header: "estimated_settlement",
+    // Sai como veio: pode ser epoch ou a frase da política, e é a string
+    // original que explica por que o valor ainda não é definitivo.
+    money: false,
+    value: (tx) => tx.estimated_settlement ?? "",
+  },
+  {
+    header: "unsettled_reason",
+    money: false,
+    value: (tx) => tx.unsettled_reason ?? "",
+  },
+  { header: "est_revenue", money: true, value: (tx) => tx.est_revenue_amount ?? "" },
+  { header: "est_shipping_cost", money: true, value: (tx) => tx.est_shipping_cost_amount ?? "" },
+  { header: "est_fee_tax", money: true, value: (tx) => tx.est_fee_tax_amount ?? "" },
+  {
+    // A parte de est_fee_tax que nenhum campo de fee/tax reporta. Sem esta
+    // coluna, reconstruir a taxa na planilha a partir do detalhamento não
+    // fecha e não há pista de quanto falta.
+    header: "est_fee_tax_nao_detalhado",
+    money: true,
+    value: (tx) => {
+      const undetailed = undetailedFeeTax(tx);
+      return undetailed === undefined ? "" : toDecimalString(undetailed);
+    },
+  },
+  { header: "est_adjustment", money: true, value: (tx) => tx.est_adjustment_amount ?? "" },
+  { header: "est_settlement", money: true, value: (tx) => tx.est_settlement_amount ?? "" },
+];
+
+/** Texto livre da API pode ter TAB ou quebra de linha, que quebram a linha da planilha. */
+function flatten(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function cells(tx: UnsettledTransaction): string[] {
+  return COLUMNS.map((column) => flatten(column.value(tx)));
+}
+
+/**
+ * Uma linha por transação, separada por TAB, com os valores BRUTOS — o
+ * formato de COLAR: o Excel divide por TAB sozinho e os números vão com
+ * ponto decimal, como a API devolveu.
  */
 export function unsettledTsv(transactions: UnsettledTransaction[]): string {
-  const header = [
-    "transaction_id",
-    "type",
-    "status",
-    "currency",
-    "order_id",
-    "adjustment_id",
-    "order_create_time",
-    "order_delivery_time",
-    "estimated_settlement",
-    "unsettled_reason",
-    "est_revenue",
-    "est_shipping_cost",
-    "est_fee_tax",
-    "est_adjustment",
-    "est_settlement",
-  ].join("\t");
+  const header = COLUMNS.map((column) => column.header).join("\t");
+  const rows = transactions.map((tx) => cells(tx).join("\t"));
+  return [header, ...rows].join("\n");
+}
+
+/** Escapa conforme o RFC 4180, que é o que o Excel espera. */
+function csvCell(value: string): string {
+  if (!/[;"\n\r]/.test(value)) return value;
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+/**
+ * CSV para BAIXAR, no dialeto que o Excel em português abre com um duplo
+ * clique: separador `;` e vírgula decimal.
+ *
+ * O Excel pt-BR usa `;` como separador de lista (a vírgula é o decimal),
+ * então um CSV separado por vírgula cairia todo na primeira coluna. Pelo
+ * mesmo motivo os valores monetários trocam `.` por `,` — senão "189.2"
+ * entra como texto e não soma.
+ */
+export function unsettledCsv(transactions: UnsettledTransaction[]): string {
+  const header = COLUMNS.map((column) => csvCell(column.header)).join(";");
 
   const rows = transactions.map((tx) =>
-    [
-      tx.id,
-      tx.type ?? "",
-      tx.status ?? "",
-      tx.currency ?? "",
-      tx.order_id ?? tx.adjustment_order_id ?? "",
-      tx.adjustment_id ?? "",
-      isoOrEmpty(tx.order_create_time),
-      isoOrEmpty(tx.order_delivery_time),
-      // Sai como veio: pode ser epoch ou a frase da política, e é a string
-      // original que explica por que o valor ainda não é definitivo.
-      tx.estimated_settlement ?? "",
-      // O motivo é texto livre da API e pode conter TAB/quebra de linha,
-      // que arrebentariam a coluna na planilha.
-      (tx.unsettled_reason ?? "").replace(/\s+/g, " ").trim(),
-      tx.est_revenue_amount ?? "",
-      tx.est_shipping_cost_amount ?? "",
-      tx.est_fee_tax_amount ?? "",
-      tx.est_adjustment_amount ?? "",
-      tx.est_settlement_amount ?? "",
-    ].join("\t"),
+    cells(tx)
+      .map((value, index) =>
+        csvCell(COLUMNS[index]?.money === true ? value.replace(".", ",") : value),
+      )
+      .join(";"),
   );
 
-  return [header, ...rows].join("\n");
+  return [header, ...rows].join("\r\n");
+}
+
+/** Nome do arquivo baixado, com a data para não sobrescrever o anterior. */
+export function unsettledFileName(now: Date = new Date()): string {
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+  return `transacoes-a-liquidar-${stamp}.csv`;
 }
 
 function isoOrEmpty(epochSeconds: number | undefined): string {

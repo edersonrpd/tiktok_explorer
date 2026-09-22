@@ -246,3 +246,21 @@ export const UNSETTLED_TOTAL_LABELS: Record<string, string> = {
   sum_est_adjustment_amount: "Ajustes estimados",
   sum_est_settlement_amount: "Repasse estimado",
 };
+
+/**
+ * Campos de `fee_tax_breakdown.fee` que NÃO somam no total: eles mostram
+ * de outro ângulo uma linha que já está contada.
+ *
+ * `affiliate_commission_before_pit_amount` é a MESMA comissão de
+ * `affiliate_commission_amount`, vista antes da retenção de imposto de
+ * renda do criador, e `pit_withheld_from_ads_commission_amount` é o
+ * imposto retido dela — a documentação descreve os dois como recortes da
+ * comissão de afiliado, não como cobranças adicionais. Somá-los junto
+ * contaria a comissão duas vezes: num pedido real com comissão de
+ * R$ 16,08 e IR zerado, as duas linhas aparecem com o mesmo valor.
+ */
+export const FEE_REFERENCE_FIELDS = [
+  "affiliate_commission_before_pit_amount",
+  "affiliate_commission_amount_before_pit",
+  "pit_withheld_from_ads_commission_amount",
+] as const;

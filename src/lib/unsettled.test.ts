@@ -7,8 +7,12 @@ import {
   isDelivered,
   pageSums,
   parseEstimatedSettlement,
+  readFeeTax,
   singleCurrency,
   summarizeFormulas,
+  undetailedFeeTax,
+  unsettledCsv,
+  unsettledFileName,
   unsettledTotalsByType,
   unsettledTsv,
 } from "./unsettled";
@@ -327,5 +331,138 @@ describe("filterTransactions", () => {
 
   it("devolve vazio quando nada casa, em vez de devolver tudo", () => {
     expect(filterTransactions(rows, "999")).toEqual([]);
+  });
+});
+
+/**
+ * Pedido real de uma loja BR (586069337557206163). Ele é o caso que
+ * motivou a conferência de tarifas: quatro linhas que somam -54,86,
+ * enquanto `est_fee_tax_amount` é -44,78.
+ */
+const PEDIDO_BR: UnsettledTransaction = {
+  id: "7685384271058355976",
+  type: "ORDER",
+  status: "UNSETTLED",
+  currency: "BRL",
+  order_id: "586069337557206163",
+  estimated_settlement: "Delivered + 7 days",
+  unsettled_reason: "WAITING_FOR_PACKAGE_DELIVERY",
+  order_create_time: 1789392500,
+  est_revenue_amount: "189.2",
+  est_shipping_cost_amount: "0",
+  est_fee_tax_amount: "-44.78",
+  est_settlement_amount: "144.42",
+  fee_tax_breakdown: {
+    fee: {
+      affiliate_commission_amount: "-16.08",
+      affiliate_commission_before_pit_amount: "-16.08",
+      pit_withheld_from_ads_commission_amount: "0",
+      platform_commission_amount: "-11.35",
+      sfp_service_fee_amount: "-11.35",
+      transaction_fee_amount: "0",
+    },
+    tax: { vat_amount: "0", sales_tax_amount: "0" },
+  },
+};
+
+describe("readFeeTax", () => {
+  const label = (field: string) => field;
+
+  it("tira da soma a comissão de afiliado antes do IR, que duplica a de cima", () => {
+    const { entries, reference } = readFeeTax(PEDIDO_BR, label);
+    expect(entries.map((e) => e.field)).toEqual([
+      "affiliate_commission_amount",
+      "platform_commission_amount",
+      "sfp_service_fee_amount",
+    ]);
+    expect(reference.map((e) => e.field)).toEqual(["affiliate_commission_before_pit_amount"]);
+  });
+
+  it("expõe o valor que a API cobra sem detalhar em campo nenhum", () => {
+    // Linhas somam -38,78; est_fee_tax_amount é -44,78.
+    const { reconciliation } = readFeeTax(PEDIDO_BR, label);
+    expect(decimal(reconciliation?.sum)).toBe("-38.78");
+    expect(decimal(reconciliation?.total)).toBe("-44.78");
+    expect(decimal(reconciliation?.undetailed)).toBe("-6.00");
+    expect(reconciliation?.matches).toBe(false);
+  });
+
+  it("não acusa diferença quando as linhas fecham com o total", () => {
+    const { reconciliation } = readFeeTax(
+      {
+        id: "2",
+        est_fee_tax_amount: "-10.42",
+        fee_tax_breakdown: {
+          fee: { platform_commission_amount: "-5.21", sfp_service_fee_amount: "-5.21" },
+        },
+      },
+      label,
+    );
+    expect(reconciliation?.matches).toBe(true);
+    expect(decimal(reconciliation?.undetailed)).toBe("0.00");
+  });
+
+  it("junta tarifas e impostos numa lista só, por ordem de impacto", () => {
+    const { entries } = readFeeTax(
+      {
+        id: "3",
+        est_fee_tax_amount: "-30",
+        fee_tax_breakdown: {
+          fee: { platform_commission_amount: "-5" },
+          tax: { vat_amount: "-25" },
+        },
+      },
+      label,
+    );
+    expect(entries.map((e) => e.field)).toEqual(["vat_amount", "platform_commission_amount"]);
+  });
+});
+
+describe("undetailedFeeTax", () => {
+  it("devolve a diferença do pedido real", () => {
+    expect(decimal(undetailedFeeTax(PEDIDO_BR))).toBe("-6.00");
+  });
+
+  it("devolve undefined quando a transação não traz est_fee_tax_amount", () => {
+    expect(undetailedFeeTax({ id: "1" })).toBeUndefined();
+  });
+});
+
+describe("unsettledCsv", () => {
+  const csv = unsettledCsv([PEDIDO_BR]);
+  const [header, row] = csv.split("\r\n");
+
+  it("usa ponto-e-vírgula, que é o separador do Excel em português", () => {
+    expect(header?.split(";")).toContain("est_settlement");
+    expect(csv).not.toContain("\t");
+  });
+
+  it("usa vírgula decimal, senão o Excel pt-BR lê o valor como texto", () => {
+    expect(row?.split(";")).toContain("189,2");
+    expect(row?.split(";")).toContain("144,42");
+  });
+
+  it("traz o valor não detalhado como coluna própria", () => {
+    const columns = header?.split(";") ?? [];
+    const index = columns.indexOf("est_fee_tax_nao_detalhado");
+    expect(index).toBeGreaterThan(-1);
+    expect(row?.split(";")[index]).toBe("-6,00");
+  });
+
+  it("não converte decimal em coluna que não é dinheiro", () => {
+    // "Delivered + 7 days" e datas ISO não podem virar número.
+    expect(row).toContain("Delivered + 7 days");
+  });
+
+  it("termina as linhas com CRLF, como o Excel espera", () => {
+    expect(csv).toContain("\r\n");
+  });
+});
+
+describe("unsettledFileName", () => {
+  it("carimba a data para não sobrescrever a exportação anterior", () => {
+    expect(unsettledFileName(new Date(2026, 8, 22))).toBe(
+      "transacoes-a-liquidar-2026-09-22.csv",
+    );
   });
 });

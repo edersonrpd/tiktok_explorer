@@ -5,6 +5,7 @@ import {
   moneyEquals,
   moneyOrZero,
   parseMoney,
+  roundToCents,
   subtractMoney,
   ZERO,
   type Money,
@@ -59,6 +60,63 @@ export function nonZeroEntries(
   }
 
   return entries.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+}
+
+/**
+ * Separa de um detalhamento os campos que NÃO somam no total — os que
+ * descrevem de outro ângulo uma linha que já está contada.
+ *
+ * Devolve dois objetos no mesmo formato da entrada, para que cada metade
+ * passe por `nonZeroEntries`/`hiddenFieldCount` normalmente. Sem isso, a
+ * soma das linhas exibidas fica maior que o total que a API declara, e a
+ * tela parece errada quando quem duplica é a resposta.
+ */
+export function partitionFields(
+  source: object | undefined,
+  referenceFields: readonly string[],
+): { main: Record<string, unknown>; reference: Record<string, unknown> } {
+  const main: Record<string, unknown> = {};
+  const reference: Record<string, unknown> = {};
+  if (source === undefined) return { main, reference };
+
+  for (const [field, value] of Object.entries(source)) {
+    if (referenceFields.includes(field)) reference[field] = value;
+    else main[field] = value;
+  }
+
+  return { main, reference };
+}
+
+/**
+ * Compara a soma das linhas de um detalhamento com o total que a API
+ * declara para aquele bloco.
+ *
+ * Esta conferência existe porque o total NEM SEMPRE é a soma do que vem
+ * detalhado: há cobranças que entram em `est_fee_tax_amount` sem
+ * aparecer em nenhum dos campos de `fee`/`tax`. Mostrar a diferença como
+ * uma linha explícita é o que impede o usuário de somar as linhas na mão,
+ * não bater com o repasse e não saber onde procurar.
+ */
+export interface BreakdownReconciliation {
+  /** Soma das linhas que a API detalhou. */
+  sum: Money;
+  /** Total declarado pela API para o bloco. */
+  total: Money;
+  /** O que o total tem além das linhas detalhadas (total − soma). */
+  undetailed: Money;
+  matches: boolean;
+}
+
+export function reconcileBreakdown(
+  entries: AmountEntry[],
+  total: Money | undefined,
+): BreakdownReconciliation | undefined {
+  if (total === undefined) return undefined;
+
+  const sum = addMoney(...entries.map((entry) => entry.value));
+  const undetailed = subtractMoney(total, sum);
+
+  return { sum, total, undetailed, matches: isZero(roundToCents(undetailed)) };
 }
 
 /**

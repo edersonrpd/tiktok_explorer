@@ -263,6 +263,41 @@ path + query intactos.
     aba ao lado. Esta API também só devolve transações criadas a partir
     de 01/01/2025.
 
+    **A conta das tarifas não fecha somando as linhas — e a tela mostra
+    por quê.** Duas coisas atrapalham ao mesmo tempo:
+
+    1. `affiliate_commission_before_pit_amount` repete o valor de
+       `affiliate_commission_amount`: é a mesma comissão do criador vista
+       antes da retenção de IR, não uma cobrança a mais. Esses campos
+       (com `pit_withheld_from_ads_commission_amount`) saem da soma e vão
+       para um bloco *Comissão de afiliado — recortes*, marcado como não
+       somável.
+    2. Mesmo assim sobra um valor **por pedido** que entra em
+       `est_fee_tax_amount` sem aparecer em nenhum dos ~35 campos de
+       `fee` nem dos 16 de `tax`. Em dois pedidos BR conferidos, eram
+       exatos R$ 6,00 em cada um.
+
+    Por isso o bloco de tarifas fecha a conta na tela: *soma das linhas*
+    + *cobrado sem detalhamento* = `est_fee_tax_amount`. Num pedido real:
+    −16,08 (afiliado) −11,35 (plataforma) −11,35 (frete grátis) = −38,78,
+    mais −6,00 não detalhado, dá os −44,78 que saem do repasse. A
+    diferença também vira a coluna `est_fee_tax_nao_detalhado` na
+    exportação.
+
+  - **Exportação da tabela** em dois formatos, sempre do que está na tela
+    (se você filtrou 3 pedidos, são esses 3 que saem):
+    - *Baixar planilha* gera um `.csv` no dialeto que o Excel em
+      português abre com dois cliques — separador `;` (a vírgula ali é o
+      decimal), vírgula decimal nos valores monetários e BOM UTF-8, sem o
+      qual "Transações" vira "TransaÃ§Ãµes". O nome sai carimbado com a
+      data.
+    - *Copiar* mantém o TAB com os valores crus, para colar numa planilha
+      já aberta.
+
+    As duas saídas vêm da **mesma** definição de colunas
+    ([`src/lib/unsettled.ts`](src/lib/unsettled.ts)), então o que se cola
+    e o que se baixa nunca divergem.
+
 - **Extrato financeiro do pedido** ([`src/lib/orderStatement.ts`](src/lib/orderStatement.ts)),
   no cartão de pedidos, em três leituras que se completam:
   1. *Extrato do vendedor* — crédito × débito e **total líquido a
