@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Hourglass,
   Search,
 } from "lucide-react";
 import type { UnsettledTransaction, UnsettledTransactionsData } from "../types/tiktok";
@@ -38,11 +37,12 @@ import {
 import { formatEpochBR, formatEpochDateBR } from "../lib/format";
 import { formatMoney, parseMoney } from "../lib/money";
 import {
-  Card,
   CopyButton,
   DownloadButton,
   FilterChips,
   HelpNote,
+  MetaPills,
+  SideCard,
   Tabs,
   type ChipOption,
   type TabSpec,
@@ -113,115 +113,27 @@ export function UnsettledView({
       content: <TypeTotalsPanel totals={totals} currency={currency} />,
     });
   }
-  tabs.push(
-    {
-      id: "checks",
-      label: "Conferências",
-      badge: formulas.diverging.length > 0 ? "atenção" : undefined,
-      badgeTone: "warn",
-      content: (
-        <ChecksPanel data={data} transactions={transactions} currency={currency} formulas={formulas} />
-      ),
-    },
-    {
-      id: "pagination",
-      label: "Paginação",
-      badge: hasNextPage ? "há mais" : "última",
-      content: <NextPagePanel data={data} query={query} />,
-    },
-  );
+  tabs.push({
+    id: "pagination",
+    label: "Paginação",
+    badge: hasNextPage ? "há mais" : "última",
+    content: <NextPagePanel data={data} query={query} />,
+  });
 
   return (
     <>
-      <UnsettledSummary data={data} transactions={transactions} currency={currency} />
+      <UnsettledSummary
+        data={data}
+        transactions={transactions}
+        currency={currency}
+        formulas={formulas}
+      />
       <Tabs label="Seções das transações a liquidar" tabs={tabs} />
     </>
   );
 }
 
 function UnsettledSummary({
-  data,
-  transactions,
-  currency,
-}: {
-  data: UnsettledTransactionsData;
-  transactions: UnsettledTransaction[];
-  currency: string | undefined;
-}) {
-  const sums = useMemo(() => pageSums(transactions), [transactions]);
-  const mixedCurrency = currency === undefined && transactions.length > 0;
-  const shipping = sums.shipping;
-
-  return (
-    <Card
-      title="Resumo"
-      icon={<Hourglass />}
-      count={data.total_count}
-      actions={<span className="badge gray">UNSETTLED</span>}
-    >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Highlight
-          label="Repasse estimado"
-          value={formatMoney(parseMoney(data.sum_est_settlement_amount), currency)}
-          strong
-        />
-        <Highlight
-          label="Receita estimada"
-          value={formatMoney(parseMoney(data.sum_est_revenue_amount), currency)}
-        />
-        <Highlight
-          label="Taxas e impostos estimados"
-          value={formatMoney(parseMoney(data.sum_est_fee_amount), currency)}
-        />
-        <Highlight
-          label="Ajustes estimados"
-          value={formatMoney(parseMoney(data.sum_est_adjustment_amount), currency)}
-        />
-      </div>
-
-      <p className="mt-2 text-[11px] t-4">
-        Os quatro somatórios acima são do <strong className="t-2">conjunto filtrado inteiro</strong>,
-        não desta página. A resposta não traz somatório de frete — o valor estimado de frete só
-        pode ser somado das transações exibidas:{" "}
-        <strong className="t-2">{formatMoney(shipping, currency)}</strong> nesta página.
-      </p>
-
-      <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-4">
-        <Field
-          label="Transações pendentes"
-          value={data.total_count !== undefined ? String(data.total_count) : undefined}
-        />
-        <Field label="Nesta página" value={String(transactions.length)} />
-        <Field label="Moeda" value={mixedCurrency ? "(mista)" : currency} />
-        <Field
-          label="Já entregues"
-          value={`${transactions.filter(isDelivered).length} de ${transactions.length}`}
-        />
-      </dl>
-
-      {mixedCurrency ? (
-        <p className="alert alert-error mt-2 px-3 py-2 text-xs t-2">
-          As transações desta página estão em moedas diferentes. Os valores aparecem sem símbolo, e
-          somar linhas de moedas distintas não produz um total válido.
-        </p>
-      ) : (
-        <CompositionBar
-          title="Para onde vai a receita"
-          note="somas desta página"
-          currency={currency}
-          segments={[
-            { label: "Repasse", value: sums.settlement, tone: "ink" },
-            { label: "Frete", value: sums.shipping, tone: "accent" },
-            { label: "Taxas e impostos", value: sums.feeTax, tone: "amber" },
-            { label: "Ajustes", value: sums.adjustment, tone: "gray" },
-          ]}
-        />
-      )}
-    </Card>
-  );
-}
-
-function ChecksPanel({
   data,
   transactions,
   currency,
@@ -232,12 +144,122 @@ function ChecksPanel({
   currency: string | undefined;
   formulas: ReturnType<typeof summarizeFormulas>;
 }) {
+  const sums = useMemo(() => pageSums(transactions), [transactions]);
+  const mixedCurrency = currency === undefined && transactions.length > 0;
   const comparable = canCompareSums(data, transactions);
   const sumChecks = useMemo(
     () => (comparable ? checkSums(data, transactions) : []),
     [comparable, data, transactions],
   );
+  const problems =
+    formulas.diverging.length + sumChecks.filter((check) => !check.matches).length;
+  const checked = formulas.checked + sumChecks.length;
 
+  const revenue = parseMoney(data.sum_est_revenue_amount);
+  const fee = parseMoney(data.sum_est_fee_amount);
+  const feeShare =
+    revenue !== undefined && revenue > 0 && fee !== undefined
+      ? `${((Math.abs(fee) / revenue) * 100).toLocaleString("pt-BR", {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        })}% da receita`
+      : undefined;
+
+  return (
+    <>
+      <MetaPills
+        items={[
+          {
+            text: `${data.total_count ?? transactions.length} transação(ões) pendente(s)`,
+          },
+          { text: `${transactions.length} nesta página` },
+          { text: mixedCurrency ? "moeda mista" : (currency ?? "—") },
+          {
+            text: `${transactions.filter(isDelivered).length} de ${transactions.length} já entregues`,
+          },
+          { text: "UNSETTLED", tone: "gray" },
+        ]}
+      />
+
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <Highlight
+          label="Repasse estimado"
+          value={formatMoney(parseMoney(data.sum_est_settlement_amount), currency)}
+          hint="conjunto filtrado inteiro"
+          strong
+        />
+        <Highlight
+          label="Receita estimada"
+          value={formatMoney(revenue, currency)}
+          hint="conjunto filtrado inteiro"
+        />
+        <Highlight
+          label="Taxas e impostos estimados"
+          value={formatMoney(fee, currency)}
+          hint={feeShare}
+          negative={fee !== undefined && fee < 0}
+        />
+        <Highlight
+          label="Ajustes estimados"
+          value={formatMoney(parseMoney(data.sum_est_adjustment_amount), currency)}
+          hint="conjunto filtrado inteiro"
+          negative={(parseMoney(data.sum_est_adjustment_amount) ?? 0) < 0}
+        />
+      </div>
+
+      <div className="grid gap-3.5 lg:grid-cols-2 lg:items-start">
+        <SideCard title="Para onde vai a receita" note="somas desta página">
+          {mixedCurrency ? (
+            <p className="alert alert-error px-3 py-2 text-xs t-2">
+              As transações desta página estão em moedas diferentes. Os valores aparecem sem
+              símbolo, e somar linhas de moedas distintas não produz um total válido.
+            </p>
+          ) : (
+            <CompositionBar
+              currency={currency}
+              segments={[
+                { label: "Repasse", value: sums.settlement, tone: "ink" },
+                { label: "Frete", value: sums.shipping, tone: "accent" },
+                { label: "Taxas e impostos", value: sums.feeTax, tone: "amber" },
+                { label: "Ajustes", value: sums.adjustment, tone: "gray" },
+              ]}
+            />
+          )}
+          <p className="text-[11px] t-4">
+            A resposta não traz somatório de frete — ele só pode ser somado das transações
+            exibidas: <strong className="t-2">{formatMoney(sums.shipping, currency)}</strong> nesta
+            página.
+          </p>
+        </SideCard>
+
+        <SideCard
+          title="Conferências"
+          badge={problems > 0 ? "atenção" : checked > 0 ? "ok" : undefined}
+          badgeTone={problems > 0 ? "warn" : "ok"}
+        >
+          <ChecksPanel
+            currency={currency}
+            formulas={formulas}
+            comparable={comparable}
+            sumChecks={sumChecks}
+          />
+        </SideCard>
+      </div>
+    </>
+  );
+}
+
+function ChecksPanel({
+  currency,
+  formulas,
+  comparable,
+  sumChecks,
+}: {
+  currency: string | undefined;
+  formulas: ReturnType<typeof summarizeFormulas>;
+  comparable: boolean;
+  sumChecks: ReturnType<typeof checkSums>;
+}) {
   return (
     <div className="space-y-4">
       <div>
@@ -406,7 +428,7 @@ function TypeTotalsPanel({
   return (
     <div>
       <div className="overflow-x-auto">
-        <table className="tbl text-xs">
+        <table className="tbl tbl-lg">
           <thead>
             <tr>
               <th>Tipo</th>
@@ -538,7 +560,7 @@ function TransactionsPanel({
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="tbl text-xs">
+          <table className="tbl tbl-lg">
             <thead>
               <tr>
                 <th />

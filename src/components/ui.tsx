@@ -203,3 +203,50 @@ export function HelpNote({ title = "Como ler estes valores", children }: { title
     </details>
   );
 }
+
+/**
+ * Cartão lateral dos resultados financeiros ("Para onde vai a receita",
+ * "Conferências"): título forte à esquerda, selo ou nota à direita.
+ */
+export function SideCard({
+  title,
+  note,
+  badge,
+  badgeTone,
+  children,
+}: {
+  title: string;
+  note?: string;
+  badge?: string;
+  badgeTone?: "ok" | "warn";
+  children: ReactNode;
+}) {
+  return (
+    <section className="card side-card">
+      <header className="side-card-hd">
+        <h2 className="side-card-title">{title}</h2>
+        {badge !== undefined ? (
+          <span className={`side-card-badge ${badgeTone === "warn" ? "is-warn" : badgeTone === "ok" ? "is-ok" : ""}`}>
+            {badge}
+          </span>
+        ) : (
+          note !== undefined && <span className="text-[11.5px] t-3">{note}</span>
+        )}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/** Linha de pílulas com os metadados do resultado (moeda, contagens, status). */
+export function MetaPills({ items }: { items: Array<{ text: string; tone?: "ok" | "gray" }> }) {
+  return (
+    <div className="meta-pills">
+      {items.map((item) => (
+        <span key={item.text} className={`meta-pill ${item.tone === "ok" ? "is-ok" : ""}`}>
+          {item.text}
+        </span>
+      ))}
+    </div>
+  );
+}

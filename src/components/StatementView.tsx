@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Landmark,
   Search,
 } from "lucide-react";
 import type { StatementTransaction, StatementTransactionsData } from "../types/tiktok";
@@ -33,11 +32,12 @@ import {
 import { formatEpochBR, formatEpochDateBR } from "../lib/format";
 import { addMoney, formatMoney, parseMoney } from "../lib/money";
 import {
-  Card,
   CopyButton,
   DownloadButton,
   FilterChips,
   HelpNote,
+  MetaPills,
+  SideCard,
   Tabs,
   type ChipOption,
   type TabSpec,
@@ -102,15 +102,6 @@ export function StatementView({
       content: <TypeTotalsPanel totals={totals} currency={data.currency} />,
     });
   }
-  if (checks.length > 0) {
-    tabs.push({
-      id: "checks",
-      label: "Conferências",
-      badge: checks.some((c) => !c.matches) ? "atenção" : undefined,
-      badgeTone: "warn",
-      content: <ChecksPanel checks={checks} currency={data.currency} />,
-    });
-  }
   tabs.push({
     id: "pagination",
     label: "Paginação",
@@ -120,7 +111,7 @@ export function StatementView({
 
   return (
     <>
-      <StatementSummary data={data} transactions={transactions} />
+      <StatementSummary data={data} transactions={transactions} checks={checks} />
       <Tabs label="Seções do extrato" tabs={tabs} />
     </>
   );
@@ -129,84 +120,96 @@ export function StatementView({
 function StatementSummary({
   data,
   transactions,
+  checks,
 }: {
   data: StatementTransactionsData;
   transactions: StatementTransaction[];
+  checks: ReturnType<typeof checkStatementFormulas>;
 }) {
   const currency = data.currency;
   const breakdown = data.total_settlement_breakdown;
+  const diverging = checks.filter((check) => !check.matches).length;
 
   return (
-    <Card
-      title={`Extrato ${data.id ?? "—"}`}
-      icon={<Landmark />}
-      count={data.total_count}
-      actions={<span className="badge green">{data.status ?? "—"}</span>}
-    >
-      <div className="grid gap-3 sm:grid-cols-3">
+    <>
+      <MetaPills
+        items={[
+          { text: data.status ?? "—", tone: "ok" },
+          { text: `Gerado em ${formatEpochBR(data.create_time)}` },
+          { text: currency ?? "—" },
+          {
+            text: `${data.total_count ?? transactions.length} transação(ões) no extrato`,
+          },
+          { text: `${transactions.length} nesta página` },
+        ]}
+      />
+
+      <div className="grid gap-3.5 sm:grid-cols-3">
         <Highlight
           label="Valor a pagar"
           value={formatMoney(parseMoney(data.payable_amount), currency)}
+          hint={`Extrato ${data.id ?? "—"}`}
           strong
         />
         <Highlight
           label="Total repassado"
           value={formatMoney(parseMoney(data.total_settlement_amount), currency)}
+          hint={
+            breakdown !== undefined
+              ? `receita ${formatMoney(parseMoney(breakdown.total_revenue_amount), currency)}`
+              : undefined
+          }
         />
         <Highlight
           label="Reserva (retida/liberada)"
           value={formatMoney(parseMoney(data.total_reserve_amount), currency)}
+          negative={(parseMoney(data.total_reserve_amount) ?? 0) < 0}
         />
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-4">
-        <Field label="Gerado em" value={formatEpochBR(data.create_time)} />
-        <Field label="Moeda" value={currency} />
-        <Field
-          label="Transações no extrato"
-          value={data.total_count !== undefined ? String(data.total_count) : undefined}
-        />
-        <Field label="Nesta página" value={String(transactions.length)} />
-      </dl>
-
-      {breakdown !== undefined && (
-        <CompositionBar
-          title="Composição do total repassado"
-          note="extrato inteiro"
-          currency={currency}
-          segments={[
-            {
-              label: "Repasse",
-              value: parseMoney(data.total_settlement_amount),
-              tone: "ink",
-            },
-            {
-              label: STATEMENT_TOTAL_LABELS.total_shipping_cost_amount ?? "Custo de frete",
-              value: parseMoney(breakdown.total_shipping_cost_amount),
-              tone: "accent",
-            },
-            {
-              label: STATEMENT_TOTAL_LABELS.total_fee_tax_amount ?? "Taxas e impostos",
-              value: parseMoney(breakdown.total_fee_tax_amount),
-              tone: "amber",
-            },
-            {
-              label: STATEMENT_TOTAL_LABELS.total_adjustment_amount ?? "Ajustes",
-              value: parseMoney(breakdown.total_adjustment_amount),
-              tone: "gray",
-            },
-          ]}
-        />
+      {(breakdown !== undefined || checks.length > 0) && (
+        <div className="grid gap-3.5 lg:grid-cols-2 lg:items-start">
+          {breakdown !== undefined && (
+            <SideCard title="Para onde vai a receita" note="extrato inteiro">
+              <CompositionBar
+                currency={currency}
+                segments={[
+                  {
+                    label: "Repasse",
+                    value: parseMoney(data.total_settlement_amount),
+                    tone: "ink",
+                  },
+                  {
+                    label: STATEMENT_TOTAL_LABELS.total_shipping_cost_amount ?? "Custo de frete",
+                    value: parseMoney(breakdown.total_shipping_cost_amount),
+                    tone: "accent",
+                  },
+                  {
+                    label: STATEMENT_TOTAL_LABELS.total_fee_tax_amount ?? "Taxas e impostos",
+                    value: parseMoney(breakdown.total_fee_tax_amount),
+                    tone: "amber",
+                  },
+                  {
+                    label: STATEMENT_TOTAL_LABELS.total_adjustment_amount ?? "Ajustes",
+                    value: parseMoney(breakdown.total_adjustment_amount),
+                    tone: "gray",
+                  },
+                ]}
+              />
+            </SideCard>
+          )}
+          {checks.length > 0 && (
+            <SideCard
+              title="Conferências"
+              badge={diverging > 0 ? "atenção" : `${checks.length} de ${checks.length} ok`}
+              badgeTone={diverging > 0 ? "warn" : "ok"}
+            >
+              <ChecksPanel checks={checks} currency={currency} />
+            </SideCard>
+          )}
+        </div>
       )}
-      {breakdown !== undefined && (
-        <p className="mt-1.5 text-[11px] t-4">
-          Receita do extrato:{" "}
-          <strong className="t-2">
-            {formatMoney(parseMoney(breakdown.total_revenue_amount), currency)}
-          </strong>
-        </p>
-      )}
-    </Card>
+    </>
   );
 }
 
@@ -324,7 +327,7 @@ function TypeTotalsPanel({
   return (
     <div>
       <div className="overflow-x-auto">
-        <table className="tbl text-xs">
+        <table className="tbl tbl-lg">
           <thead>
             <tr>
               <th>Tipo</th>
@@ -473,7 +476,7 @@ function TransactionsPanel({
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="tbl text-xs">
+          <table className="tbl tbl-lg">
             <thead>
               <tr>
                 <th />

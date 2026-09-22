@@ -241,14 +241,45 @@ html { font-size: 16px; }
 /* ─── Indicadores (valores de destaque dos resultados) ──── */
 .kpi {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-md); padding: 14px 16px;
-  display: flex; flex-direction: column; gap: 6px;
+  border-radius: 14px; padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 8px;
 }
-.kpi-label { font-size: 11.5px; font-weight: 700; color: var(--text3); }
-.kpi-value { font-family: "JetBrains Mono", monospace; font-size: 19px; font-weight: 700; letter-spacing: -.02em; color: var(--text); }
+.kpi-label { font-size: 12px; font-weight: 700; color: var(--text3); }
+.kpi-value {
+  font-family: "JetBrains Mono", monospace; font-size: 24px; font-weight: 700;
+  letter-spacing: -.02em; line-height: 1.15; color: var(--text); overflow-wrap: anywhere;
+}
+.kpi-value.kpi-neg { color: #b42318; }
+.kpi-hint { font-size: 11.5px; color: var(--text3); }
 .kpi-strong { background: var(--hdr-bg); border-color: var(--hdr-bg); }
-.kpi-strong .kpi-label { color: var(--hdr-ink-2); }
-.kpi-strong .kpi-value { color: #fff; font-size: 22px; }
+.kpi-strong .kpi-label, .kpi-strong .kpi-hint { color: var(--hdr-ink-2); }
+.kpi-strong .kpi-value { color: #fff; font-size: 28px; }
+
+/* Pílulas de metadados sobre os indicadores */
+.meta-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -4px; }
+.meta-pill {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 9px;
+  border-radius: 6px; background: var(--surface3); color: #3d3d47;
+  font-size: 11.5px; font-weight: 700;
+}
+.meta-pill.is-ok { background: var(--green-soft); color: #0f7a4f; }
+
+/* Cartões "Para onde vai a receita" e "Conferências" */
+.side-card { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.side-card-hd { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.side-card-title { font-size: 14px; font-weight: 800; color: var(--text); }
+.side-card-badge {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 6px;
+  background: var(--surface3); color: #3d3d47; font-size: 11.5px; font-weight: 700;
+}
+.side-card-badge.is-ok { background: var(--green-soft); color: #0f7a4f; }
+.side-card-badge.is-warn { background: #fef3c7; color: #92400e; }
+
+/* Tabela das telas financeiras: texto 13px, valores em mono */
+.tbl-lg { font-size: 13px; }
+.tbl-lg thead th { font-size: 11px; color: #5c5c68; }
+.tbl-lg tbody td, .tbl-lg tfoot td { padding: 12px 14px; }
+.tbl-lg td.text-right { font-family: "JetBrains Mono", monospace; font-size: 12.5px; white-space: nowrap; }
 
 /* ─── Cards ──────────────────────────────────────────────── */
 .card {
@@ -595,11 +626,11 @@ html { font-size: 16px; }
 }
 
 /* Barra "para onde vai a receita" */
-.composition { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
-.composition-bar { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; background: var(--surface3); }
-.composition-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 16px; }
+.composition { display: flex; flex-direction: column; gap: 14px; }
+.composition-bar { display: flex; gap: 2px; height: 14px; border-radius: 7px; overflow: hidden; background: var(--surface3); }
+.composition-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
 .composition-legend dt { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--text3); }
-.composition-legend dd { font-size: 12.5px; font-weight: 700; color: var(--text); margin-top: 2px; }
+.composition-legend dd { font-size: 13px; font-weight: 700; color: var(--text); margin-top: 3px; }
 .swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
 .seg-ink    { background: var(--text); }
 .seg-accent { background: var(--accent); }

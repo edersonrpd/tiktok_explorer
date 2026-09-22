@@ -79,15 +79,22 @@ export function Highlight({
   label,
   value,
   strong,
+  hint,
+  negative,
 }: {
   label: string;
   value: string;
   strong?: boolean;
+  /** Linha de apoio sob o valor. */
+  hint?: string;
+  /** Pinta o valor de vermelho — custos que saem do repasse. */
+  negative?: boolean;
 }) {
   return (
     <div className={`kpi ${strong === true ? "kpi-strong" : ""}`}>
       <p className="kpi-label">{label}</p>
-      <p className="kpi-value">{value}</p>
+      <p className={`kpi-value ${negative === true ? "kpi-neg" : ""}`}>{value}</p>
+      {hint !== undefined && <p className="kpi-hint">{hint}</p>}
     </div>
   );
 }
@@ -216,25 +223,17 @@ export interface CompositionSegment {
  * números exatos ficam na legenda e nas abas abaixo.
  */
 export function CompositionBar({
-  title,
   segments,
   currency,
-  note,
 }: {
-  title: string;
   segments: CompositionSegment[];
   currency: string | undefined;
-  note?: string;
 }) {
   const total = segments.reduce((sum, s) => sum + Math.abs(s.value ?? 0), 0);
   if (total === 0) return null;
 
   return (
     <div className="composition">
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-xs font-bold t-2">{title}</h3>
-        {note !== undefined && <span className="text-[11px] t-4">{note}</span>}
-      </div>
       <div className="composition-bar" aria-hidden="true">
         {segments.map((s) =>
           Math.abs(s.value ?? 0) === 0 ? null : (
