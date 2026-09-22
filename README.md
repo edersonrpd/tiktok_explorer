@@ -1,9 +1,9 @@
 # tiktok-product-viewer
 
 Aplicação web (React + Vite + TypeScript) para consultar **anúncios,
-pedidos, transações por pedido e extratos de repasse** da API do TikTok Shop a
-partir de uma **URL já assinada** por um sistema interno, exibindo o
-resultado de forma legível.
+pedidos, transações por pedido, extratos de repasse e transações a
+liquidar** da API do TikTok Shop a partir de uma **URL já assinada** por um
+sistema interno, exibindo o resultado de forma legível.
 
 Endpoints suportados:
 
@@ -13,6 +13,7 @@ Endpoints suportados:
 | Pedidos | `/order/202507/orders?ids=a,b` | na **query** (`ids`) |
 | Transações do pedido | `/finance/202501/orders/{order_id}/statement_transactions` | no path |
 | Extrato (repasse) | `/finance/202501/statements/{id}/statement_transactions?sort_field=...` | no path, **com parâmetros na query** |
+| A liquidar | `/finance/202507/orders/unsettled?sort_field=...` | **não tem código** — só query |
 
 Esta aplicação **não** calcula `sign` e **não** pede `app_secret`. O fluxo é
 sempre: colar a URL assinada + o access token → GET → resultado.
@@ -132,6 +133,15 @@ path + query intactos.
     da página seguinte. O ID fica no **meio** do caminho, então colar o
     path inteiro é lido de `/statements/<id>/`, não do último segmento.
     O endpoint exige o escopo `seller.finance.info` no app.
+  - *A liquidar*: não pede código nenhum — a consulta vale para a loja
+    inteira e monta `/finance/202507/orders/unsettled` já com
+    `sort_field=order_create_time` (obrigatório, e o único valor aceito),
+    `page_size` e `sort_order`, mais uma janela opcional de datas. As duas
+    datas são digitadas no calendário e convertidas para `search_time_ge` /
+    `search_time_lt` em epoch, pelo **horário local**. A data final entra
+    inteira: como o parâmetro é `lt` (estritamente menor), a aplicação
+    envia a meia-noite do dia seguinte — sem isso, escolher 31/01
+    excluiria o dia 31. Também exige o escopo `seller.finance.info`.
 
   Em todos os casos há botão de copiar, e a URL gerada (com o host
   `https://open-api.tiktokglobalshop.com`) é o que vai para o sistema
@@ -141,7 +151,8 @@ path + query intactos.
   funcionando, e a validação passa a exigir `ids`. Os dois endpoints de
   `/finance/` terminam em `/statement_transactions` e se distinguem pelo
   segmento do meio: `/orders/<id>` são as transações de um pedido,
-  `/statements/<id>` são as do repasse inteiro.
+  `/statements/<id>` são as do repasse inteiro. O terceiro,
+  `/orders/unsettled`, é o único de finanças sem ID no path.
 - **Validação antes de enviar**: bloqueia placeholder não substituído
   (`{product_id}`, `{statement_id}` ou outro no mesmo formato) e
   parâmetros obrigatórios ausentes (`shop_cipher`, `app_key`,
@@ -156,7 +167,9 @@ path + query intactos.
   literais, para diagnosticar se a assinatura em si está correta.
 - **Painel de parâmetros** sempre visível com nome e valor brutos, para
   conferir que são exatamente os esperados e nada a mais (4 para anúncio e
-  para transações, 5 para pedidos por causa do `ids`).
+  para transações, 5 para pedidos por causa do `ids`; no extrato e nas
+  transações a liquidar, 5 obrigatórios mais os opcionais de paginação,
+  ordenação e — só nas a liquidar — a janela de datas).
 - **Erros traduzidos**: `106001`/`10008` (assinatura), `36009004` (token),
   `12000000` (`shop_cipher`), `21008111` (pedido de outra loja), além dos
   transitórios do Get Order Detail (`10002014/15`, `10037002/3/4`,
@@ -201,6 +214,36 @@ path + query intactos.
     avançar página dentro do app. Quando a resposta traz
     `next_page_token`, a tela monta a URL da página seguinte — com o mesmo
     `page_size` e `sort_order` — pronta para assinar.
+  - *A liquidar*: a pergunta que o extrato não responde — **quanto ainda
+    está para entrar**. Todo valor é estimativa (prefixo `est_` na API),
+    porque o repasse não foi fechado, e a tela repete isso onde o número
+    aparece: estimado não é realizado e não pode ser lançado como tal.
+
+    Três armadilhas desta resposta, que a tela trata explicitamente em vez
+    de esconder:
+
+    1. Os quatro somatórios do cabeçalho valem para o **conjunto filtrado
+       inteiro**, não para a página. Compará-los com a soma das transações
+       exibidas só faz sentido quando a página É o conjunto inteiro (sem
+       `next_page_token` e com `total_count` batendo) — fora disso a
+       conferência é omitida, com a explicação, em vez de acusar uma
+       divergência que não existe.
+    2. **Não há somatório de frete** na resposta. O custo de frete aparece
+       somado das transações da página e marcado como tal.
+    3. `estimated_settlement` **não é uma data** enquanto o pedido não é
+       entregue: a API devolve o texto da política (`x days after
+       delivery`) e só depois passa a devolver um epoch. A tela mostra a
+       frase original nesse caso, junto com `unsettled_reason` — que é o
+       que responde "por que ainda não caiu?" e por isso fica na linha
+       fechada, não atrás do expansor.
+
+    A fórmula publicada (`receita − frete − taxas/impostos − ajustes =
+    repasse`) é conferida **transação a transação**, com a contagem de
+    quantas fecharam e a lista das que não. A paginação funciona como no
+    extrato, com uma diferença: a URL da página seguinte repete a janela
+    de datas desta consulta, porque o token foi emitido para aquele
+    recorte.
+
 - **Extrato financeiro do pedido** ([`src/lib/orderStatement.ts`](src/lib/orderStatement.ts)),
   no cartão de pedidos, em três leituras que se completam:
   1. *Extrato do vendedor* — crédito × débito e **total líquido a
@@ -258,6 +301,7 @@ src/
   lib/orders.ts          # agrupamento dos itens do pedido por SKU
   lib/money.ts           # aritmética exata sobre os valores em string da API
   lib/statements.ts      # leitura dos valores do extrato de repasse
+  lib/unsettled.ts       # leitura das transações a liquidar (tudo estimado)
   lib/statementLabels.ts # tradução dos ~70 campos do extrato
   lib/orderStatement.ts  # extrato do pedido: crédito × débito e conferências
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
@@ -267,6 +311,7 @@ src/
   lib/diagnostics.ts     # verificações de inconsistência de cadastro
   lib/format.ts          # formatação (datas BR, preço, idade)
   components/            # interface em cartões
+  components/breakdown.tsx # blocos de detalhamento comuns às telas de finanças
   App.tsx                # estado da aplicação e layout
 ```
 

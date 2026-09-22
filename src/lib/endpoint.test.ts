@@ -3,12 +3,14 @@ import {
   buildOrderEndpoint,
   buildProductEndpoint,
   buildTransactionEndpoint,
+  buildUnsettledEndpoint,
   cleanProductId,
   buildStatementEndpoint,
   cleanStatementId,
   detectResourceKind,
   MAX_ORDER_IDS,
   parseOrderIds,
+  parseSearchTime,
 } from "./endpoint";
 
 describe("buildProductEndpoint", () => {
@@ -220,5 +222,112 @@ describe("detectResourceKind — os dois endpoints de finanças", () => {
     expect(
       detectResourceKind("/finance/202501/statements/7238804564097517339/statement_transactions"),
     ).toBe("statement");
+  });
+});
+
+describe("parseSearchTime", () => {
+  /** Epoch da meia-noite LOCAL — é assim que o filtro interpreta a data. */
+  const localMidnight = (year: number, month: number, day: number) =>
+    Math.floor(new Date(year, month - 1, day).getTime() / 1000);
+
+  it("trata campo vazio como ausência de filtro, não como erro", () => {
+    expect(parseSearchTime("", "start")).toEqual({ ok: true, epoch: undefined });
+    expect(parseSearchTime("   ", "end")).toEqual({ ok: true, epoch: undefined });
+  });
+
+  it("converte a data inicial para a meia-noite local do próprio dia", () => {
+    const result = parseSearchTime("2025-01-31", "start");
+    expect(result).toEqual({ ok: true, epoch: localMidnight(2025, 1, 31) });
+  });
+
+  it("joga a data final para o dia seguinte, porque o parâmetro é lt (exclusivo)", () => {
+    // Sem isso, escolher 31/01 excluiria o dia 31 inteiro do resultado.
+    const result = parseSearchTime("2025-01-31", "end");
+    expect(result).toEqual({ ok: true, epoch: localMidnight(2025, 2, 1) });
+  });
+
+  it("aceita um Unix timestamp já pronto, literal nos dois extremos", () => {
+    expect(parseSearchTime("1623812664", "start")).toEqual({ ok: true, epoch: 1623812664 });
+    expect(parseSearchTime("1623812664", "end")).toEqual({ ok: true, epoch: 1623812664 });
+  });
+
+  it("recusa data que não existe no calendário em vez de deslizar para o mês seguinte", () => {
+    const result = parseSearchTime("2025-02-30", "start");
+    expect(result.ok).toBe(false);
+  });
+
+  it("recusa epoch em milissegundos e mostra o valor em segundos", () => {
+    const result = parseSearchTime("1623812664000", "start");
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.reason).toContain("1623812664");
+  });
+
+  it("recusa texto que não é data nem timestamp", () => {
+    expect(parseSearchTime("31/01/2025", "start").ok).toBe(false);
+    expect(parseSearchTime("ontem", "end").ok).toBe(false);
+  });
+});
+
+describe("buildUnsettledEndpoint", () => {
+  it("monta a consulta sem nenhum filtro — o endpoint não tem código", () => {
+    expect(buildUnsettledEndpoint()).toEqual({
+      ok: true,
+      path: "/finance/202507/orders/unsettled?page_size=100&sort_field=order_create_time&sort_order=DESC",
+    });
+  });
+
+  it("inclui a janela de datas e o token em ordem alfabética", () => {
+    const result = buildUnsettledEndpoint({
+      pageSize: 20,
+      sortOrder: "ASC",
+      pageToken: "WzE3MjM1MjE1ODEyNDks",
+      searchTimeGe: 1623812664,
+      searchTimeLt: 1623899064,
+    });
+    expect(result.ok && result.path).toBe(
+      "/finance/202507/orders/unsettled" +
+        "?page_size=20" +
+        "&page_token=WzE3MjM1MjE1ODEyNDks" +
+        "&search_time_ge=1623812664" +
+        "&search_time_lt=1623899064" +
+        "&sort_field=order_create_time" +
+        "&sort_order=ASC",
+    );
+  });
+
+  it("omite o filtro que não foi informado", () => {
+    const result = buildUnsettledEndpoint({ searchTimeGe: 1623812664 });
+    expect(result.ok && result.path).toContain("search_time_ge=1623812664");
+    expect(result.ok && result.path).not.toContain("search_time_lt");
+  });
+
+  it("recusa janela invertida, que devolveria zero transações sem erro da API", () => {
+    const result = buildUnsettledEndpoint({
+      searchTimeGe: 1623899064,
+      searchTimeLt: 1623812664,
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("recusa page_size fora da faixa da documentação", () => {
+    expect(buildUnsettledEndpoint({ pageSize: 0 }).ok).toBe(false);
+    expect(buildUnsettledEndpoint({ pageSize: 101 }).ok).toBe(false);
+    expect(buildUnsettledEndpoint({ pageSize: Number.NaN }).ok).toBe(false);
+  });
+
+  it("recusa page_token quebrado no copiar/colar", () => {
+    expect(buildUnsettledEndpoint({ pageToken: "abc def" }).ok).toBe(false);
+  });
+});
+
+describe("detectResourceKind das transações a liquidar", () => {
+  it("reconhece o caminho sem ID", () => {
+    expect(detectResourceKind("/finance/202507/orders/unsettled")).toBe("unsettled");
+  });
+
+  it("não confunde com as transações de um pedido", () => {
+    expect(detectResourceKind("/finance/202501/orders/576463220456522968/statement_transactions")).toBe(
+      "transaction",
+    );
   });
 });

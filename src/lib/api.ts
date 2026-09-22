@@ -4,6 +4,7 @@ import type {
   StatementTransactionsData,
   TikTokApiResponse,
   TransactionsByOrderData,
+  UnsettledTransactionsData,
 } from "../types/tiktok";
 import type { NormalizedUrl } from "./signedUrl";
 import { TARGET_HEADER, TOKEN_HEADER } from "./proxyTarget";
@@ -133,4 +134,12 @@ export function fetchStatementTransactions(
   accessToken: string,
 ): Promise<FetchResult<StatementTransactionsData>> {
   return fetchResource<StatementTransactionsData>(normalized, accessToken);
+}
+
+/** GET /finance/202507/orders/unsettled */
+export function fetchUnsettledTransactions(
+  normalized: NormalizedUrl,
+  accessToken: string,
+): Promise<FetchResult<UnsettledTransactionsData>> {
+  return fetchResource<UnsettledTransactionsData>(normalized, accessToken);
 }

@@ -17,6 +17,7 @@ import type {
   StatementTransactionsData,
   TikTokApiResponse,
   TransactionsByOrderData,
+  UnsettledTransactionsData,
 } from "./types/tiktok";
 import { EndpointBuilder } from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
@@ -30,6 +31,7 @@ import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { OrderView } from "./components/OrderView";
 import { TransactionView } from "./components/TransactionView";
 import { StatementView, type StatementPageQuery } from "./components/StatementView";
+import { UnsettledView, type UnsettledPageQuery } from "./components/UnsettledView";
 import { RawJson } from "./components/RawJson";
 import { HistoryList } from "./components/HistoryList";
 import { Card } from "./components/ui";
@@ -45,6 +47,7 @@ export type LoadedResource =
   | { kind: "order"; orders: Order[]; requestedIds: string[] }
   | { kind: "transaction"; data: TransactionsByOrderData }
   | { kind: "statement"; statement: StatementTransactionsData; query: StatementPageQuery }
+  | { kind: "unsettled"; unsettled: UnsettledTransactionsData; query: UnsettledPageQuery }
   | { kind: "other" };
 
 export interface HistoryEntry {
@@ -92,6 +95,31 @@ function statementPageQuery(normalized: NormalizedUrl): StatementPageQuery {
     sortOrder: STATEMENT_SORT_ORDERS.includes(sortOrder as StatementSortOrder)
       ? (sortOrder as StatementSortOrder)
       : undefined,
+  };
+}
+
+/**
+ * Lê da URL consultada os filtros e a paginação das transações a
+ * liquidar, para a próxima página sair com o MESMO recorte. Aqui não há
+ * ID no path — o que identifica a consulta é a janela de datas.
+ */
+function unsettledPageQuery(normalized: NormalizedUrl): UnsettledPageQuery {
+  const params = parseQueryParams(normalized.rawQuery);
+
+  const positiveInt = (name: string): number | undefined => {
+    const value = Number(params.find((p) => p.name === name)?.value);
+    return Number.isInteger(value) && value > 0 ? value : undefined;
+  };
+
+  const sortOrder = params.find((p) => p.name === "sort_order")?.value;
+
+  return {
+    pageSize: positiveInt("page_size"),
+    sortOrder: STATEMENT_SORT_ORDERS.includes(sortOrder as StatementSortOrder)
+      ? (sortOrder as StatementSortOrder)
+      : undefined,
+    searchTimeGe: positiveInt("search_time_ge"),
+    searchTimeLt: positiveInt("search_time_lt"),
   };
 }
 
@@ -167,6 +195,12 @@ export default function App() {
         resource = { kind: "statement", statement, query: statementPageQuery(normalized) };
         label = `Extrato ${statement.id ?? ""}`.trim();
         subtitle = `${count} transação(ões)${statement.total_count !== undefined ? ` de ${statement.total_count}` : ""}`;
+      } else if (kind === "unsettled") {
+        const unsettled = result.data as UnsettledTransactionsData;
+        const count = unsettled.transactions?.length ?? 0;
+        resource = { kind: "unsettled", unsettled, query: unsettledPageQuery(normalized) };
+        label = "Transações a liquidar";
+        subtitle = `${count} transação(ões)${unsettled.total_count !== undefined ? ` de ${unsettled.total_count}` : ""} · repasse estimado ${unsettled.sum_est_settlement_amount ?? "—"}`;
       } else {
         resource = { kind: "other" };
         label = "Resposta bruta";
@@ -302,6 +336,10 @@ export default function App() {
 
               {view.resource.kind === "statement" && (
                 <StatementView data={view.resource.statement} query={view.resource.query} />
+              )}
+
+              {view.resource.kind === "unsettled" && (
+                <UnsettledView data={view.resource.unsettled} query={view.resource.query} />
               )}
 
               {view.resource.kind === "other" && (

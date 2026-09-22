@@ -1,22 +1,30 @@
 import { useMemo, useState } from "react";
-import { Landmark, Link2, Package, Receipt, Tag } from "lucide-react";
+import { Hourglass, Landmark, Link2, Package, Receipt, Tag } from "lucide-react";
 import {
   buildOrderEndpoint,
   buildProductEndpoint,
   buildStatementEndpoint,
   buildTransactionEndpoint,
+  buildUnsettledEndpoint,
   DEFAULT_STATEMENT_PAGE_SIZE,
+  DEFAULT_UNSETTLED_PAGE_SIZE,
   MAX_STATEMENT_PAGE_SIZE,
+  MAX_UNSETTLED_PAGE_SIZE,
   MIN_STATEMENT_PAGE_SIZE,
+  MIN_UNSETTLED_PAGE_SIZE,
   parseOrderIds,
+  parseSearchTime,
   STATEMENT_SORT_FIELD,
   STATEMENT_SORT_ORDERS,
+  UNSETTLED_DEFAULT_SEARCH_START,
+  UNSETTLED_SORT_FIELD,
+  type EndpointResult,
   type StatementSortOrder,
 } from "../lib/endpoint";
 import { TIKTOK_API_HOST } from "../lib/signedUrl";
 import { Card, CopyButton } from "./ui";
 
-type BuilderTab = "product" | "order" | "transaction" | "statement";
+type BuilderTab = "product" | "order" | "transaction" | "statement" | "unsettled";
 
 /**
  * Passo 1 do fluxo: informar os códigos e obter o endpoint que será
@@ -26,6 +34,10 @@ type BuilderTab = "product" | "order" | "transaction" | "statement";
  * extrato vão no path, enquanto os IDs de pedido vão na query (`ids`).
  * Tudo que está na query é assinado junto — daí o caminho de pedidos sair
  * com `?ids=...` e o do extrato já sair com `sort_field` e a paginação.
+ *
+ * As transações a liquidar são o caso extremo disso: não têm código
+ * nenhum, e o que define a consulta (a janela de datas) vive inteiramente
+ * na query assinada.
  */
 export function EndpointBuilder() {
   const [tab, setTab] = useState<BuilderTab>("product");
@@ -36,6 +48,11 @@ export function EndpointBuilder() {
   const [pageSize, setPageSize] = useState(String(DEFAULT_STATEMENT_PAGE_SIZE));
   const [sortOrder, setSortOrder] = useState<StatementSortOrder>("DESC");
   const [pageToken, setPageToken] = useState("");
+  const [unsettledFrom, setUnsettledFrom] = useState("");
+  const [unsettledTo, setUnsettledTo] = useState("");
+  const [unsettledPageSize, setUnsettledPageSize] = useState(String(DEFAULT_UNSETTLED_PAGE_SIZE));
+  const [unsettledSortOrder, setUnsettledSortOrder] = useState<StatementSortOrder>("DESC");
+  const [unsettledPageToken, setUnsettledPageToken] = useState("");
 
   const productResult = useMemo(() => buildProductEndpoint(productId), [productId]);
   const orderResult = useMemo(() => buildOrderEndpoint(orderIds), [orderIds]);
@@ -56,23 +73,55 @@ export function EndpointBuilder() {
     [statementId, pageSize, sortOrder, pageToken],
   );
 
-  const RESULTS: Record<BuilderTab, { result: typeof productResult; input: string }> = {
+  const unsettledResult = useMemo((): EndpointResult => {
+    // A data inválida precisa ser reportada com a própria explicação de
+    // `parseSearchTime` ("a data não existe", "está em milissegundos"):
+    // convertê-la em undefined montaria uma consulta silenciosamente sem
+    // filtro, que é o pior resultado possível aqui.
+    const from = parseSearchTime(unsettledFrom, "start");
+    if (!from.ok) return from;
+    const to = parseSearchTime(unsettledTo, "end");
+    if (!to.ok) return to;
+
+    return buildUnsettledEndpoint({
+      pageSize:
+        unsettledPageSize.trim() === ""
+          ? DEFAULT_UNSETTLED_PAGE_SIZE
+          : Number(unsettledPageSize),
+      sortOrder: unsettledSortOrder,
+      pageToken: unsettledPageToken,
+      searchTimeGe: from.epoch,
+      searchTimeLt: to.epoch,
+    });
+  }, [unsettledFrom, unsettledTo, unsettledPageSize, unsettledSortOrder, unsettledPageToken]);
+
+  /**
+   * `input` decide se já vale reclamar do que foi digitado: sem nada
+   * digitado, a aba não mostra erro. As transações a liquidar não têm
+   * código nenhum — a consulta vale para a loja inteira —, então ali o
+   * resultado é sempre conferido (`alwaysCheck`).
+   */
+  const RESULTS: Record<
+    BuilderTab,
+    { result: EndpointResult; input: string; alwaysCheck?: boolean }
+  > = {
     product: { result: productResult, input: productId },
     order: { result: orderResult, input: orderIds },
     transaction: { result: transactionResult, input: transactionOrderId },
     statement: { result: statementResult, input: statementId },
+    unsettled: { result: unsettledResult, input: "", alwaysCheck: true },
   };
-  const { result, input } = RESULTS[tab];
-  const typed = input.trim() !== "";
+  const { result, input, alwaysCheck } = RESULTS[tab];
+  const typed = alwaysCheck === true || input.trim() !== "";
   const fullUrl = result.ok ? `${TIKTOK_API_HOST}${result.path}` : null;
 
   return (
     <Card title="1. Montar endpoint para assinatura" icon={<Link2 />}>
-      <div className="tab-bar mb-3 w-full">
+      <div className="tab-bar mb-3 w-full flex-wrap">
         <button
           type="button"
           onClick={() => setTab("product")}
-          className={`tab-btn flex-1 justify-center ${tab === "product" ? "tab-active" : ""}`}
+          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "product" ? "tab-active" : ""}`}
         >
           <Tag className="mr-1.5 h-3.5 w-3.5" />
           Anúncio
@@ -80,7 +129,7 @@ export function EndpointBuilder() {
         <button
           type="button"
           onClick={() => setTab("order")}
-          className={`tab-btn flex-1 justify-center ${tab === "order" ? "tab-active" : ""}`}
+          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "order" ? "tab-active" : ""}`}
         >
           <Package className="mr-1.5 h-3.5 w-3.5" />
           Pedidos
@@ -88,7 +137,7 @@ export function EndpointBuilder() {
         <button
           type="button"
           onClick={() => setTab("transaction")}
-          className={`tab-btn flex-1 justify-center ${tab === "transaction" ? "tab-active" : ""}`}
+          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "transaction" ? "tab-active" : ""}`}
         >
           <Receipt className="mr-1.5 h-3.5 w-3.5" />
           Transações
@@ -96,10 +145,18 @@ export function EndpointBuilder() {
         <button
           type="button"
           onClick={() => setTab("statement")}
-          className={`tab-btn flex-1 justify-center ${tab === "statement" ? "tab-active" : ""}`}
+          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "statement" ? "tab-active" : ""}`}
         >
           <Landmark className="mr-1.5 h-3.5 w-3.5" />
           Extrato
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("unsettled")}
+          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "unsettled" ? "tab-active" : ""}`}
+        >
+          <Hourglass className="mr-1.5 h-3.5 w-3.5" />
+          A liquidar
         </button>
       </div>
 
@@ -236,6 +293,110 @@ export function EndpointBuilder() {
         </>
       )}
 
+      {tab === "unsettled" && (
+        <>
+          <p className="text-xs t-3">
+            Esta consulta não tem código: ela devolve tudo que ainda está pendente de liquidação na
+            loja. Os filtros abaixo recortam por <code>order_create_time</code> e já vão na query,
+            porque são assinados junto.
+          </p>
+
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <label htmlFor="unsettled-from" className="mb-1 block text-xs font-bold t-3">
+                Criados a partir de
+              </label>
+              <input
+                id="unsettled-from"
+                type="date"
+                value={unsettledFrom}
+                onChange={(e) => setUnsettledFrom(e.target.value)}
+                className="inp font-mono"
+              />
+            </div>
+            <div>
+              <label htmlFor="unsettled-to" className="mb-1 block text-xs font-bold t-3">
+                Criados até
+              </label>
+              <input
+                id="unsettled-to"
+                type="date"
+                value={unsettledTo}
+                onChange={(e) => setUnsettledTo(e.target.value)}
+                className="inp font-mono"
+              />
+            </div>
+          </div>
+
+          <p className="mt-1 text-[11px] t-4">
+            As duas datas são opcionais e valem pelo horário local. O dia escolhido em{" "}
+            <strong className="t-3">Criados até</strong> entra inteiro: a API recebe{" "}
+            <code>search_time_lt</code> (estritamente menor), então a aplicação envia a meia-noite
+            do dia seguinte. Deixando um dos campos vazio, a própria API completa — sem o fim, vale
+            até agora; sem o início, vale desde {UNSETTLED_DEFAULT_SEARCH_START}.
+          </p>
+
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <label htmlFor="unsettled-page-size" className="mb-1 block text-xs font-bold t-3">
+                page_size
+              </label>
+              <input
+                id="unsettled-page-size"
+                value={unsettledPageSize}
+                onChange={(e) => setUnsettledPageSize(e.target.value)}
+                inputMode="numeric"
+                min={MIN_UNSETTLED_PAGE_SIZE}
+                max={MAX_UNSETTLED_PAGE_SIZE}
+                className="inp font-mono"
+              />
+            </div>
+            <div>
+              <label htmlFor="unsettled-sort-order" className="mb-1 block text-xs font-bold t-3">
+                sort_order
+              </label>
+              <select
+                id="unsettled-sort-order"
+                value={unsettledSortOrder}
+                onChange={(e) => setUnsettledSortOrder(e.target.value as StatementSortOrder)}
+                className="inp font-mono"
+              >
+                {STATEMENT_SORT_ORDERS.map((order) => (
+                  <option key={order} value={order}>
+                    {order}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs font-bold t-3">
+              page_token (só a partir da 2ª página)
+            </summary>
+            <textarea
+              value={unsettledPageToken}
+              onChange={(e) => setUnsettledPageToken(e.target.value)}
+              spellCheck={false}
+              rows={2}
+              aria-label="page_token das transações a liquidar"
+              placeholder="cole aqui o next_page_token devolvido na página anterior"
+              className="inp mt-1 font-mono leading-relaxed"
+            />
+            <p className="mt-1 text-[11px] t-4">
+              Repita as MESMAS datas da página anterior: o token foi emitido para aquela janela, e
+              mudar o filtro no meio da paginação devolve um recorte incoerente.
+            </p>
+          </details>
+
+          <p className="mt-2 text-[11px] t-3">
+            <code>sort_field={UNSETTLED_SORT_FIELD}</code> é obrigatório e entra sozinho — a
+            documentação não aceita outro valor. Este endpoint exige o escopo{" "}
+            <code>seller.finance.info</code> no app.
+          </p>
+        </>
+      )}
+
       {typed && !result.ok && (
         <p className="alert alert-error mt-2 px-3 py-2 text-xs t-2">{result.reason}</p>
       )}
@@ -251,7 +412,7 @@ export function EndpointBuilder() {
         Envie esta URL ao sistema interno de assinatura. Ele acrescenta shop_cipher, app_key,
         timestamp e sign, e devolve a URL assinada para colar no passo 2.
         {tab === "order" && " O ids já vai na query porque é assinado junto com os demais parâmetros."}
-        {tab === "statement" &&
+        {(tab === "statement" || tab === "unsettled") &&
           " Os parâmetros da query já vão na URL porque são assinados junto com os demais."}
       </p>
     </Card>

@@ -351,6 +351,8 @@ export interface ShippingCostBreakdown {
   logistics_service_fee?: string;
   fbt_overall_merchant_subsidy?: string;
   fbt_key_merchant_subsidy?: string;
+  /** Só documentado no Get Unsettled Transactions. */
+  sfr_reimbursement?: string;
   tiktok_shop_shipping_incentive_amount?: string;
   /** Custos suplementares que não contribuem diretamente para shipping_cost_amount. */
   supplementary_component?: Record<string, string>;
@@ -470,3 +472,82 @@ export interface StatementTransactionsData {
 }
 
 export type StatementTransactionsResponse = TikTokApiResponse<StatementTransactionsData>;
+
+/* ------------------------------------------------------------------------ */
+/* Transações a liquidar — GET /finance/202507/orders/unsettled              */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * O QUE ESTE ENDPOINT TEM DE DIFERENTE dos dois acima: ele olha para
+ * FRENTE, não para trás. As transações aqui ainda NÃO entraram em nenhum
+ * extrato — são pedidos e ajustes que o TikTok ainda vai repassar —, e
+ * por isso todo valor é uma ESTIMATIVA, com o prefixo `est_`.
+ *
+ * Consequências práticas para a tipagem:
+ *
+ * - Não há `statement_id`, `payable_amount` nem `reserve`: nada disso
+ *   existe antes do repasse ser fechado.
+ * - `currency` vem POR TRANSAÇÃO, não no cabeçalho da resposta como no
+ *   extrato — o cabeçalho traz apenas os somatórios.
+ * - `estimated_settlement` NÃO é um número: enquanto o pedido não é
+ *   entregue a API devolve um texto de política ("x days after delivery")
+ *   e só depois passa a devolver um epoch. Por isso é `string`, e a
+ *   leitura passa por `parseEstimatedSettlement` (src/lib/unsettled.ts).
+ *
+ * Os blocos de detalhamento (`RevenueBreakdown`, `ShippingCostBreakdown`,
+ * `FeeTaxBreakdown`) são os mesmos dos outros dois endpoints e por isso
+ * são reaproveitados — o que muda é o nome do total de cada bloco, que
+ * aqui ganha o prefixo `est_`.
+ */
+
+/**
+ * Uma transação ainda não liquidada: UM pedido ou UM ajuste. Os campos
+ * preenchidos mudam conforme `type` — `order_id` para `ORDER`,
+ * `adjustment_id`/`adjustment_order_id` para os tipos de ajuste.
+ */
+export interface UnsettledTransaction {
+  id: string;
+  /** ORDER ou um dos tipos de ajuste (ver src/lib/statementLabels.ts). */
+  type?: string;
+  /** Só existe UNSETTLED nesta API. */
+  status?: string;
+  /** Por transação — este endpoint não traz moeda no cabeçalho. */
+  currency?: string;
+  /**
+   * Epoch em segundos OU texto de política ("x days after delivery"),
+   * conforme o pedido já tenha sido entregue ou não. Ver
+   * `parseEstimatedSettlement` em src/lib/unsettled.ts.
+   */
+  estimated_settlement?: string;
+  /** Por que a transação ainda não foi liquidada. */
+  unsettled_reason?: string;
+  order_create_time?: number;
+  /** Ausente enquanto o pedido não for entregue. */
+  order_delivery_time?: number;
+  order_id?: string;
+  adjustment_id?: string;
+  adjustment_order_id?: string;
+  est_adjustment_amount?: string;
+  /** Fórmula: est_revenue − est_shipping_cost − est_fee_tax − est_adjustment. */
+  est_settlement_amount?: string;
+  est_revenue_amount?: string;
+  revenue_breakdown?: RevenueBreakdown;
+  /** Incompleto enquanto o pedido não for entregue — o frete real ainda não é conhecido. */
+  est_shipping_cost_amount?: string;
+  shipping_cost_breakdown?: ShippingCostBreakdown;
+  est_fee_tax_amount?: string;
+  fee_tax_breakdown?: FeeTaxBreakdown;
+}
+
+export interface UnsettledTransactionsData {
+  next_page_token?: string;
+  /** Total do conjunto filtrado, não da página. */
+  total_count?: number;
+  sum_est_settlement_amount?: string;
+  sum_est_revenue_amount?: string;
+  sum_est_adjustment_amount?: string;
+  sum_est_fee_amount?: string;
+  transactions?: UnsettledTransaction[];
+}
+
+export type UnsettledTransactionsResponse = TikTokApiResponse<UnsettledTransactionsData>;

@@ -24,15 +24,16 @@ export const SIGNATURE_PARAMS = ["shop_cipher", "app_key", "timestamp", "sign"] 
 
 /**
  * Parâmetros de negócio exigidos por endpoint, além dos de assinatura.
- * Em /order/.../orders os IDs vão na query (`ids`) e no extrato vai o
- * `sort_field` — por irem na query, são assinados junto e precisam
- * existir antes da assinatura.
+ * Em /order/.../orders os IDs vão na query (`ids`); no extrato e nas
+ * transações a liquidar vai o `sort_field` — por irem na query, são
+ * assinados junto e precisam existir antes da assinatura.
  */
 const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
   order: ["ids"],
   transaction: [],
   statement: ["sort_field"],
+  unsettled: ["sort_field"],
   other: [],
 };
 
@@ -40,13 +41,15 @@ const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
  * Parâmetros que o endpoint aceita mas não exige. Não entram na contagem
  * de obrigatórios; servem para o painel não marcar como "inesperado" algo
  * que a documentação prevê — o extrato tem três deles (paginação e
- * ordenação), e todos também são assinados.
+ * ordenação) e as transações a liquidar somam a janela de datas. Todos
+ * também são assinados.
  */
 const OPTIONAL_ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
   order: [],
   transaction: [],
   statement: ["page_size", "sort_order", "page_token"],
+  unsettled: ["page_size", "sort_order", "page_token", "search_time_ge", "search_time_lt"],
   other: [],
 };
 

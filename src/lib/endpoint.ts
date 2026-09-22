@@ -15,9 +15,13 @@
  * - Transações do extrato: o ID vai no PATH e os parâmetros de
  *   paginação/ordenação vão na QUERY →
  *   /finance/202501/statements/{id}/statement_transactions?sort_field=...
+ * - Transações a liquidar: NÃO tem código nenhum — a consulta é da loja
+ *   inteira e tudo vai na QUERY →
+ *   /finance/202507/orders/unsettled?sort_field=...&search_time_ge=...
  *
- * Em pedidos e no extrato há parâmetros de negócio na query (`ids`,
- * `sort_field`, `page_size`, `sort_order`, `page_token`), que por isso são
+ * Em pedidos, no extrato e nas transações a liquidar há parâmetros de
+ * negócio na query (`ids`, `sort_field`, `page_size`, `sort_order`,
+ * `page_token`, `search_time_ge`, `search_time_lt`), que por isso são
  * assinados junto com os demais. Eles precisam estar presentes ANTES da
  * assinatura — acrescentar qualquer um depois invalidaria o `sign` (erro
  * 106001). Por isso o passo 1 já entrega o caminho com a query embutida.
@@ -35,11 +39,20 @@ export const TRANSACTION_API_VERSION = "202501";
 /** Versão do endpoint de transações por extrato (parte do path assinado). */
 export const STATEMENT_API_VERSION = "202501";
 
+/** Versão do endpoint de transações a liquidar (parte do path assinado). */
+export const UNSETTLED_API_VERSION = "202507";
+
 /** Limite de IDs por chamada, conforme a documentação do Get Order Detail. */
 export const MAX_ORDER_IDS = 50;
 
 /** Tipo de recurso que a aplicação sabe consultar e exibir. */
-export type ResourceKind = "product" | "order" | "transaction" | "statement" | "other";
+export type ResourceKind =
+  | "product"
+  | "order"
+  | "transaction"
+  | "statement"
+  | "unsettled"
+  | "other";
 
 export type EndpointResult = { ok: true; path: string } | { ok: false; reason: string };
 
@@ -265,6 +278,189 @@ export function buildStatementEndpoint(
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Transações a liquidar — /finance/202507/orders/unsettled            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Mesmo `sort_field` do extrato, e pela mesma razão: é OBRIGATÓRIO e só
+ * aceita um valor. Fica em uma constante própria porque são endpoints
+ * independentes na documentação — se um dia um deles passar a aceitar
+ * outro campo, só esta muda.
+ */
+export const UNSETTLED_SORT_FIELD = "order_create_time";
+
+/** Faixa aceita por `page_size` (padrão da API: 20). */
+export const MIN_UNSETTLED_PAGE_SIZE = 1;
+export const MAX_UNSETTLED_PAGE_SIZE = 100;
+
+/** Padrão desta aplicação: o teto, para reduzir o número de assinaturas. */
+export const DEFAULT_UNSETTLED_PAGE_SIZE = MAX_UNSETTLED_PAGE_SIZE;
+
+/**
+ * Início padrão da janela quando só `search_time_lt` é informado,
+ * conforme a documentação (`20250101`). A API aplica esse padrão sozinha
+ * — o valor existe aqui só para a tela poder avisar o usuário.
+ */
+export const UNSETTLED_DEFAULT_SEARCH_START = "01/01/2025";
+
+export interface UnsettledEndpointOptions {
+  pageSize?: number;
+  sortOrder?: StatementSortOrder;
+  /** `next_page_token` da página anterior; ausente na primeira página. */
+  pageToken?: string;
+  /** Início da janela de `order_create_time`, em epoch (segundos). */
+  searchTimeGe?: number;
+  /** Fim da janela, EXCLUSIVO (`lt`, não `le`), em epoch (segundos). */
+  searchTimeLt?: number;
+}
+
+export type SearchTimeResult =
+  | { ok: true; epoch: number | undefined }
+  | { ok: false; reason: string };
+
+/**
+ * Converte o que foi digitado no filtro de data para o epoch em segundos
+ * que a API espera. Campo vazio devolve `undefined` — ausência é válida e
+ * diferente de erro, então o resultado distingue as duas coisas.
+ *
+ * Aceita duas formas:
+ * - `AAAA-MM-DD` (o que `<input type="date">` produz), interpretado no
+ *   fuso LOCAL. O app é todo em pt-BR e o usuário concilia por data local;
+ *   usar UTC deslocaria a janela em 3h e faria pedidos do fim do dia caírem
+ *   no dia seguinte.
+ * - Um Unix timestamp em segundos já pronto, para quem copiou de outro
+ *   sistema.
+ *
+ * `bound` decide como uma DATA vira instante:
+ * - `start` → 00:00 do próprio dia (o `ge` é inclusivo).
+ * - `end`   → 00:00 do dia SEGUINTE. O parâmetro é `search_time_lt`, ou
+ *   seja, estritamente menor; sem somar um dia, escolher 31/01 excluiria
+ *   o dia 31 inteiro. Um timestamp digitado à mão vai literal — ali o
+ *   usuário já escolheu o instante exato.
+ */
+export function parseSearchTime(raw: string, bound: "start" | "end"): SearchTimeResult {
+  const value = raw.trim();
+  if (value === "") return { ok: true, epoch: undefined };
+
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (isoMatch !== null) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+
+    // `new Date(2025, 1, 31)` vira 03/03 sem reclamar: a checagem de
+    // round-trip é o que recusa uma data que não existe.
+    const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      return { ok: false, reason: `A data ${value} não existe no calendário.` };
+    }
+
+    if (bound === "end") date.setDate(date.getDate() + 1);
+    return { ok: true, epoch: Math.floor(date.getTime() / 1000) };
+  }
+
+  if (/^\d+$/.test(value)) {
+    // 13 dígitos é quase sempre epoch em MILISSEGUNDOS copiado de um log:
+    // aceitar geraria uma janela no ano 48000 e a API devolveria vazio.
+    if (value.length === 13) {
+      return {
+        ok: false,
+        reason:
+          `${value} parece estar em milissegundos. A API usa Unix timestamp em SEGUNDOS — ` +
+          `use ${value.slice(0, 10)}.`,
+      };
+    }
+    const epoch = Number(value);
+    if (epoch <= 0) return { ok: false, reason: "O timestamp precisa ser maior que zero." };
+    return { ok: true, epoch };
+  }
+
+  return {
+    ok: false,
+    reason: `Data inválida: "${value}". Use o formato AAAA-MM-DD ou um Unix timestamp em segundos.`,
+  };
+}
+
+/**
+ * Monta `/finance/{versão}/orders/unsettled?...`.
+ *
+ * Único endpoint da aplicação SEM código nenhum: a consulta é da loja
+ * inteira, e tudo que a restringe (janela de datas, paginação, ordenação)
+ * vai na query — portanto é assinado junto. Por isso não há o que validar
+ * antes de montar: sem nenhum filtro o caminho já é válido e traz tudo
+ * que está pendente de liquidação.
+ *
+ * Os parâmetros saem em ordem alfabética, como no extrato, para que duas
+ * montagens da mesma consulta gerem exatamente a mesma string.
+ */
+export function buildUnsettledEndpoint(options: UnsettledEndpointOptions = {}): EndpointResult {
+  const {
+    pageSize = DEFAULT_UNSETTLED_PAGE_SIZE,
+    sortOrder = "DESC",
+    pageToken,
+    searchTimeGe,
+    searchTimeLt,
+  } = options;
+
+  if (
+    !Number.isInteger(pageSize) ||
+    pageSize < MIN_UNSETTLED_PAGE_SIZE ||
+    pageSize > MAX_UNSETTLED_PAGE_SIZE
+  ) {
+    return {
+      ok: false,
+      reason: `page_size precisa ser um inteiro entre ${MIN_UNSETTLED_PAGE_SIZE} e ${MAX_UNSETTLED_PAGE_SIZE} (informado: ${pageSize}).`,
+    };
+  }
+
+  const token = pageToken?.trim() ?? "";
+  if (token !== "" && !PAGE_TOKEN_PATTERN.test(token)) {
+    return {
+      ok: false,
+      reason:
+        "O page_token deve ser copiado exatamente como veio em next_page_token (letras, números e + / = _ -). " +
+        "Espaços ou outros caracteres indicam que ele foi quebrado no copiar/colar.",
+    };
+  }
+
+  for (const [name, epoch] of [
+    ["search_time_ge", searchTimeGe],
+    ["search_time_lt", searchTimeLt],
+  ] as const) {
+    if (epoch === undefined) continue;
+    if (!Number.isInteger(epoch) || epoch <= 0) {
+      return { ok: false, reason: `${name} precisa ser um Unix timestamp em segundos.` };
+    }
+  }
+
+  // Janela invertida devolveria zero transações sem erro nenhum da API —
+  // o tipo de resultado que passa por "não tenho nada a receber".
+  if (searchTimeGe !== undefined && searchTimeLt !== undefined && searchTimeGe >= searchTimeLt) {
+    return {
+      ok: false,
+      reason: "O início da janela precisa ser anterior ao fim (search_time_ge < search_time_lt).",
+    };
+  }
+
+  // Ordem alfabética: page_size, page_token, search_time_ge, search_time_lt,
+  // sort_field, sort_order.
+  const params = [`page_size=${pageSize}`];
+  if (token !== "") params.push(`page_token=${token}`);
+  if (searchTimeGe !== undefined) params.push(`search_time_ge=${searchTimeGe}`);
+  if (searchTimeLt !== undefined) params.push(`search_time_lt=${searchTimeLt}`);
+  params.push(`sort_field=${UNSETTLED_SORT_FIELD}`, `sort_order=${sortOrder}`);
+
+  return {
+    ok: true,
+    path: `/finance/${UNSETTLED_API_VERSION}/orders/unsettled?${params.join("&")}`,
+  };
+}
+
 /**
  * Descobre o tipo de recurso pelo path da URL assinada, para que a
  * validação e a exibição não dependam da aba selecionada — colar uma URL
@@ -277,6 +473,10 @@ export function detectResourceKind(path: string): ResourceKind {
   // se distinguem pelo segmento do meio: /orders/{id} traz as transações
   // de UM pedido; /statements/{id} traz as do repasse inteiro.
   if (path.startsWith("/finance/")) {
+    // As transações a liquidar são o único endpoint de finanças sem ID no
+    // path: o caminho termina em /orders/unsettled e vale para a loja
+    // inteira. Testar isso antes evita confundi-lo com /orders/{id}/...
+    if (/\/orders\/unsettled\/?$/.test(path)) return "unsettled";
     return path.includes("/statements/") ? "statement" : "transaction";
   }
   return "other";

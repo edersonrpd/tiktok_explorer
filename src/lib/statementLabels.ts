@@ -92,6 +92,7 @@ export const SHIPPING_LABELS: Record<string, string> = {
   logistics_service_fee: "Taxa de serviço logístico",
   fbt_overall_merchant_subsidy: "Subsídio FBT geral",
   fbt_key_merchant_subsidy: "Subsídio FBT de vendedor estratégico",
+  sfr_reimbursement: "Reembolso do programa de garantia de frete (SFR)",
   tiktok_shop_shipping_incentive_amount: "Incentivo de frete do TikTok Shop",
 };
 
@@ -122,6 +123,10 @@ export const FEE_TAX_LABELS: Record<string, string> = {
   credit_card_handling_fee_amount: "Taxa de processamento de cartão",
   affiliate_commission_amount: "Comissão de afiliado (criador)",
   affiliate_commission_amount_before_pit: "Comissão de afiliado antes do IR",
+  // Grafia usada pelo Get Unsettled Transactions para o mesmo conceito da
+  // linha acima — a API não é consistente entre os dois endpoints.
+  affiliate_commission_before_pit_amount: "Comissão de afiliado antes do IR",
+  pit_withheld_from_ads_commission_amount: "IR retido da comissão de afiliado",
   affiliate_partner_commission_amount: "Comissão de parceiro afiliado",
   affiliate_ads_commission_amount: "Comissão de afiliado por anúncios",
   sfp_service_fee_amount: "Taxa do programa de frete grátis do vendedor",
@@ -169,7 +174,17 @@ export const FEE_TAX_LABELS: Record<string, string> = {
   gmv_max_coupon_fee: "Custo de cupons GMV Max",
   cps_shop_ads_commission_tax_amount: "Imposto sobre a taxa de anúncios GMV Max",
   shipping_insurance_fee_tax_amount: "Imposto sobre o seguro de frete",
+  retail_delivery_fee_amount: "Retail delivery fee (Colorado)",
+  retail_delivery_fee_payment_amount: "Retail delivery fee cobrada",
+  retail_delivery_fee_refund_amount: "Retail delivery fee estornada",
+  new_customer_growth_package_fee: "Taxa do pacote de novos clientes",
+  target_product_gmv_growth_package_fee: "Taxa do pacote de GMV por produto",
+  store_gmv_growth_package_fee: "Taxa do pacote de GMV da loja",
+  auto_post_shoppable_video_commission_fee: "Comissão de vídeo comprável automático",
   // Impostos
+  sales_tax_amount: "Sales tax",
+  sales_tax_payment_amount: "Sales tax cobrada",
+  sales_tax_refund_amount: "Sales tax estornada",
   vat_amount: "VAT (cross-border)",
   import_vat_amount: "VAT de importação",
   customs_duty_amount: "Direitos aduaneiros",
@@ -184,6 +199,10 @@ export const FEE_TAX_LABELS: Record<string, string> = {
   sales_tax_referral_fee_amount: "Sales tax sobre a taxa de indicação",
   smart_promotion_fee_tax_amount: "Imposto da taxa de Smart Promotion",
   cedular_tax: "Imposto cedular (Guanajuato)",
+  new_customer_growth_package_fee_tax: "Imposto do pacote de novos clientes",
+  store_gmv_growth_package_fee_sales_tax: "Imposto do pacote de GMV da loja",
+  target_product_gmv_growth_package_tax: "Imposto do pacote de GMV por produto",
+  auto_post_shoppable_video_sales_tax: "Imposto do vídeo comprável automático",
 };
 
 /** `supplementary_component` da transação — valores de referência. */
@@ -210,4 +229,20 @@ export const STATEMENT_TOTAL_LABELS: Record<string, string> = {
   total_shipping_cost_amount: "Custo de frete",
   total_fee_tax_amount: "Taxas e impostos",
   total_adjustment_amount: "Ajustes",
+};
+
+/**
+ * Somatórios do cabeçalho de Get Unsettled Transactions.
+ *
+ * A ordem aqui é a ordem de exibição, e ela é a da própria conta:
+ * receita − frete − taxas/impostos − ajustes = repasse. O somatório de
+ * frete NÃO existe nesta resposta (a API só devolve os quatro abaixo),
+ * então a linha de frete aparece na tela como calculada a partir das
+ * transações da página — ver `pageSums` em src/lib/unsettled.ts.
+ */
+export const UNSETTLED_TOTAL_LABELS: Record<string, string> = {
+  sum_est_revenue_amount: "Receita estimada",
+  sum_est_fee_amount: "Taxas e impostos estimados",
+  sum_est_adjustment_amount: "Ajustes estimados",
+  sum_est_settlement_amount: "Repasse estimado",
 };
