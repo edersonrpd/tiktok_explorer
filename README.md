@@ -205,7 +205,9 @@ path + query intactos.
     transação (pedido, reserva e cada tipo de ajuste, traduzidos) e a
     tabela de transações, com detalhamento sob demanda: cada transação tem
     ~70 campos e quase todos vêm zerados, então só os **diferentes de
-    zero** aparecem, com a contagem dos omitidos. O botão "copiar para
+    zero** aparecem, com a contagem dos omitidos. O bloco de tarifas e
+    impostos fecha a conta contra `fee_tax_amount` — a mesma conferência
+    descrita em *A liquidar*, com o mesmo componente. O botão "copiar para
     planilha" gera uma linha por transação com os valores brutos, para
     reconciliar no Excel.
 
@@ -264,7 +266,11 @@ path + query intactos.
     de 01/01/2025.
 
     **A conta das tarifas não fecha somando as linhas — e a tela mostra
-    por quê.** Duas coisas atrapalham ao mesmo tempo:
+    por quê.** Vale para as duas telas de finanças (aqui e no extrato),
+    porque o bloco é o mesmo
+    ([`src/components/breakdown.tsx`](src/components/breakdown.tsx),
+    sobre `readFeeTax` em [`src/lib/statements.ts`](src/lib/statements.ts)).
+    Duas coisas atrapalham ao mesmo tempo:
 
     1. `affiliate_commission_before_pit_amount` repete o valor de
        `affiliate_commission_amount`: é a mesma comissão do criador vista
@@ -278,7 +284,10 @@ path + query intactos.
        exatos R$ 6,00 em cada um.
 
     Por isso o bloco de tarifas fecha a conta na tela: *soma das linhas*
-    + *cobrado sem detalhamento* = `est_fee_tax_amount`. Num pedido real:
+    + *cobrado sem detalhamento* = o total do campo (`est_fee_tax_amount`
+    aqui, `fee_tax_amount` no extrato), com o nome do campo à vista para
+    procurar no JSON bruto. A conferência só aparece quando há diferença.
+    Num pedido real:
     −16,08 (afiliado) −11,35 (plataforma) −11,35 (frete grátis) = −38,78,
     mais −6,00 não detalhado, dá os −44,78 que saem do repasse. A
     diferença também vira a coluna `est_fee_tax_nao_detalhado` na
@@ -365,7 +374,7 @@ src/
   lib/diagnostics.ts     # verificações de inconsistência de cadastro
   lib/format.ts          # formatação (datas BR, preço, idade)
   components/            # interface em cartões
-  components/breakdown.tsx # blocos de detalhamento comuns às telas de finanças
+  components/breakdown.tsx # blocos de detalhamento e conferência de tarifas (telas de finanças)
   App.tsx                # estado da aplicação e layout
 ```
 

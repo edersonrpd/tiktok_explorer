@@ -7,7 +7,6 @@ import {
   isDelivered,
   pageSums,
   parseEstimatedSettlement,
-  readFeeTax,
   singleCurrency,
   summarizeFormulas,
   undetailedFeeTax,
@@ -364,59 +363,6 @@ const PEDIDO_BR: UnsettledTransaction = {
     tax: { vat_amount: "0", sales_tax_amount: "0" },
   },
 };
-
-describe("readFeeTax", () => {
-  const label = (field: string) => field;
-
-  it("tira da soma a comissão de afiliado antes do IR, que duplica a de cima", () => {
-    const { entries, reference } = readFeeTax(PEDIDO_BR, label);
-    expect(entries.map((e) => e.field)).toEqual([
-      "affiliate_commission_amount",
-      "platform_commission_amount",
-      "sfp_service_fee_amount",
-    ]);
-    expect(reference.map((e) => e.field)).toEqual(["affiliate_commission_before_pit_amount"]);
-  });
-
-  it("expõe o valor que a API cobra sem detalhar em campo nenhum", () => {
-    // Linhas somam -38,78; est_fee_tax_amount é -44,78.
-    const { reconciliation } = readFeeTax(PEDIDO_BR, label);
-    expect(decimal(reconciliation?.sum)).toBe("-38.78");
-    expect(decimal(reconciliation?.total)).toBe("-44.78");
-    expect(decimal(reconciliation?.undetailed)).toBe("-6.00");
-    expect(reconciliation?.matches).toBe(false);
-  });
-
-  it("não acusa diferença quando as linhas fecham com o total", () => {
-    const { reconciliation } = readFeeTax(
-      {
-        id: "2",
-        est_fee_tax_amount: "-10.42",
-        fee_tax_breakdown: {
-          fee: { platform_commission_amount: "-5.21", sfp_service_fee_amount: "-5.21" },
-        },
-      },
-      label,
-    );
-    expect(reconciliation?.matches).toBe(true);
-    expect(decimal(reconciliation?.undetailed)).toBe("0.00");
-  });
-
-  it("junta tarifas e impostos numa lista só, por ordem de impacto", () => {
-    const { entries } = readFeeTax(
-      {
-        id: "3",
-        est_fee_tax_amount: "-30",
-        fee_tax_breakdown: {
-          fee: { platform_commission_amount: "-5" },
-          tax: { vat_amount: "-25" },
-        },
-      },
-      label,
-    );
-    expect(entries.map((e) => e.field)).toEqual(["vat_amount", "platform_commission_amount"]);
-  });
-});
 
 describe("undetailedFeeTax", () => {
   it("devolve a diferença do pedido real", () => {

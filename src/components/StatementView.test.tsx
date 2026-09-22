@@ -223,4 +223,5 @@ describe("StatementView", () => {
     expect(html).toContain("576463220456522968");
     expect(html).toContain(money("200")); // revenue_amount
   });
+
 });

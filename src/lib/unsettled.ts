@@ -9,14 +9,7 @@ import {
   ZERO,
   type Money,
 } from "./money";
-import {
-  nonZeroEntries,
-  partitionFields,
-  reconcileBreakdown,
-  type AmountEntry,
-  type BreakdownReconciliation,
-} from "./statements";
-import { FEE_REFERENCE_FIELDS } from "./statementLabels";
+import { readFeeTax } from "./statements";
 
 /**
  * Leitura de Get Unsettled Transactions (/finance/202507/orders/unsettled).
@@ -149,63 +142,18 @@ export function summarizeFormulas(transactions: UnsettledTransaction[]): Formula
   return summary;
 }
 
-/* ------------------------------------------------------------------ */
-/* Tarifas e impostos: o que a API detalha e o que ela não detalha     */
-/* ------------------------------------------------------------------ */
-
-/**
- * Confere `est_fee_tax_amount` contra a soma das linhas de `fee` e `tax`.
- *
- * POR QUE ISSO PRECISA APARECER NA TELA: as duas contas não fecham, e não
- * é erro de leitura. Em pedidos reais de uma loja BR observam-se duas
- * coisas ao mesmo tempo:
- *
- * 1. `affiliate_commission_before_pit_amount` repete o valor de
- *    `affiliate_commission_amount` (é a mesma comissão antes do IR do
- *    criador). Somar as duas conta a comissão em dobro — por isso os
- *    campos de `FEE_REFERENCE_FIELDS` ficam fora da soma.
- * 2. Mesmo descontando a duplicação, sobra um valor FIXO por pedido que o
- *    total inclui e que nenhum dos ~35 campos de `fee` reporta.
- *
- * Em vez de esconder a diferença, ela vira uma linha explícita. Somar as
- * linhas na mão e não bater com o repasse, sem saber onde procurar, é o
- * problema que esta função existe para evitar.
- */
-export interface FeeTaxReading {
-  /** Linhas que somam, de `fee` e `tax` juntas, maior impacto primeiro. */
-  entries: AmountEntry[];
-  /** Linhas que só detalham outra (comissão de afiliado antes do IR, IR retido). */
-  reference: AmountEntry[];
-  /** Soma × total declarado, com a diferença não detalhada. */
-  reconciliation: BreakdownReconciliation | undefined;
-}
-
-export function readFeeTax(
-  tx: UnsettledTransaction,
-  labelFor: (field: string) => string,
-): FeeTaxReading {
-  const { main, reference } = partitionFields(tx.fee_tax_breakdown?.fee, FEE_REFERENCE_FIELDS);
-
-  const entries = [
-    ...nonZeroEntries(main, labelFor),
-    ...nonZeroEntries(tx.fee_tax_breakdown?.tax, labelFor),
-  ].sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
-
-  return {
-    entries,
-    reference: nonZeroEntries(reference, labelFor),
-    reconciliation: reconcileBreakdown(entries, parseMoney(tx.est_fee_tax_amount)),
-  };
-}
-
 /**
  * Quanto de `est_fee_tax_amount` a API não detalhou nesta transação.
+ *
  * Vai para a exportação como coluna própria: é o valor que o financeiro
- * procuraria na mão ao tentar reconstruir a taxa a partir das linhas.
+ * procuraria na mão ao tentar reconstruir a taxa a partir das linhas e
+ * não chegar ao total. A leitura em si é a mesma do extrato — ver
+ * `readFeeTax` em statements.ts.
  */
 export function undetailedFeeTax(tx: UnsettledTransaction): Money | undefined {
   // O rótulo não importa para somar; só os valores entram na conta.
-  return readFeeTax(tx, (field) => field).reconciliation?.undetailed;
+  return readFeeTax(tx.fee_tax_breakdown, parseMoney(tx.est_fee_tax_amount), (field) => field)
+    .reconciliation?.undetailed;
 }
 
 /* ------------------------------------------------------------------ */

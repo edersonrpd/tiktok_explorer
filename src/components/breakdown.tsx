@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
-import type { AmountEntry } from "../lib/statements";
+import { useMemo, type ReactNode } from "react";
+import type { FeeTaxBreakdown } from "../types/tiktok";
+import { readFeeTax, type AmountEntry } from "../lib/statements";
 import { formatMoney, type Money } from "../lib/money";
 
 /**
@@ -109,6 +110,98 @@ export function Field({
       <dd className={`t-1 ${mono === true ? "select-all font-mono" : ""}`}>
         {value !== undefined && value !== "" ? value : "—"}
       </dd>
+    </div>
+  );
+}
+
+/**
+ * Tarifas, impostos e — a parte que importa — a CONTA entre eles e o
+ * total que a API declara para o bloco.
+ *
+ * Somar as linhas exibidas não dá o total, por dois motivos que este
+ * componente separa em vez de misturar: a comissão de afiliado aparece
+ * duas vezes (antes e depois do IR do criador), e sobra um valor por
+ * pedido que a API cobra sem detalhar em campo nenhum. Antes disso, quem
+ * conferia via um punhado de linhas que não fechavam com o desconto e não
+ * tinha como saber onde estava a diferença.
+ *
+ * Vale para os dois endpoints que devolvem `fee_tax_breakdown`: o extrato
+ * e as transações a liquidar. Só o rótulo do total muda.
+ */
+export function FeeTaxBlock({
+  title,
+  breakdown,
+  total,
+  totalField,
+  currency,
+  labelFor,
+}: {
+  title: string;
+  breakdown: FeeTaxBreakdown | undefined;
+  total: Money | undefined;
+  /** Nome do campo da API, mostrado na linha de total da conferência. */
+  totalField: string;
+  currency: string | undefined;
+  labelFor: (field: string) => string;
+}) {
+  const { entries, reference, reconciliation, zeros } = useMemo(
+    () => readFeeTax(breakdown, total, labelFor),
+    [breakdown, total, labelFor],
+  );
+
+  return (
+    <div className="space-y-3">
+      <BreakdownBlock
+        title={title}
+        total={total}
+        entries={entries}
+        zeros={zeros}
+        currency={currency}
+      />
+
+      {reconciliation !== undefined && !reconciliation.matches && (
+        <div className="panel px-3 py-2">
+          <dl className="space-y-0.5 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <dt className="t-4">Soma das linhas acima</dt>
+              <dd className="shrink-0 font-medium t-1">
+                {formatMoney(reconciliation.sum, currency)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <dt className="t-2">Cobrado sem detalhamento</dt>
+              <dd
+                className={`shrink-0 font-semibold ${
+                  reconciliation.undetailed < 0 ? "text-red-600" : "t-1"
+                }`}
+              >
+                {formatMoney(reconciliation.undetailed, currency)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t pt-0.5">
+              <dt className="font-medium t-2">Total ({totalField})</dt>
+              <dd className="shrink-0 font-semibold t-1">
+                {formatMoney(reconciliation.total, currency)}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-1 text-[10px] t-4">
+            A API cobra esta diferença sem informar em qual campo ela entra — nenhum dos campos de{" "}
+            <code>fee</code> ou <code>tax</code> a reporta. Ela está no total e, portanto, já foi
+            descontada do repasse.
+          </p>
+        </div>
+      )}
+
+      {reference.length > 0 && (
+        <BreakdownBlock
+          title="Comissão de afiliado — recortes"
+          note="Não somam: são a mesma comissão acima, vista antes do IR do criador."
+          entries={reference}
+          zeros={0}
+          currency={currency}
+        />
+      )}
     </div>
   );
 }

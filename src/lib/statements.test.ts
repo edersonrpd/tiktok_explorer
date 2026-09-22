@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   checkStatementFormulas,
   nonZeroEntries,
+  partitionFields,
+  readFeeTax,
   totalsByType,
   transactionsTsv,
   hiddenFieldCount,
@@ -175,5 +177,91 @@ describe("transactionsTsv", () => {
       { id: "1", type: "RESERVE", associated_order_id: "78217892102382101" },
     ]);
     expect(tsv.split("\n")[1]?.split("\t")[2]).toBe("78217892102382101");
+  });
+});
+
+/**
+ * Tarifas de um pedido real de loja BR (586069337557206163). É o caso que
+ * motivou a conferência: as linhas exibidas somavam -54,86, enquanto o
+ * total declarado era -44,78.
+ */
+const TARIFAS_BR = {
+  fee: {
+    affiliate_commission_amount: "-16.08",
+    affiliate_commission_before_pit_amount: "-16.08",
+    pit_withheld_from_ads_commission_amount: "0",
+    platform_commission_amount: "-11.35",
+    sfp_service_fee_amount: "-11.35",
+    transaction_fee_amount: "0",
+  },
+  tax: { vat_amount: "0", sales_tax_amount: "0" },
+};
+
+describe("readFeeTax", () => {
+  const label = (field: string) => field;
+
+  it("tira da soma a comissão de afiliado antes do IR, que duplica a de cima", () => {
+    const { entries, reference } = readFeeTax(TARIFAS_BR, parseMoney("-44.78"), label);
+    expect(entries.map((e) => e.field)).toEqual([
+      "affiliate_commission_amount",
+      "platform_commission_amount",
+      "sfp_service_fee_amount",
+    ]);
+    expect(reference.map((e) => e.field)).toEqual(["affiliate_commission_before_pit_amount"]);
+  });
+
+  it("expõe o valor que a API cobra sem detalhar em campo nenhum", () => {
+    // Linhas somam -38,78; o total declarado é -44,78.
+    const { reconciliation } = readFeeTax(TARIFAS_BR, parseMoney("-44.78"), label);
+    expect(decimal(reconciliation?.sum)).toBe("-38.78");
+    expect(decimal(reconciliation?.total)).toBe("-44.78");
+    expect(decimal(reconciliation?.undetailed)).toBe("-6.00");
+    expect(reconciliation?.matches).toBe(false);
+  });
+
+  it("não acusa diferença quando as linhas fecham com o total", () => {
+    const { reconciliation } = readFeeTax(
+      { fee: { platform_commission_amount: "-5.21", sfp_service_fee_amount: "-5.21" } },
+      parseMoney("-10.42"),
+      label,
+    );
+    expect(reconciliation?.matches).toBe(true);
+    expect(decimal(reconciliation?.undetailed)).toBe("0.00");
+  });
+
+  it("junta tarifas e impostos numa lista só, por ordem de impacto", () => {
+    const { entries } = readFeeTax(
+      { fee: { platform_commission_amount: "-5" }, tax: { vat_amount: "-25" } },
+      parseMoney("-30"),
+      label,
+    );
+    expect(entries.map((e) => e.field)).toEqual(["vat_amount", "platform_commission_amount"]);
+  });
+
+  it("conta os zerados de fee e tax juntos, que é o que a tela omite", () => {
+    const { zeros } = readFeeTax(TARIFAS_BR, parseMoney("-44.78"), label);
+    // pit_withheld + transaction_fee + vat + sales_tax
+    expect(zeros).toBe(4);
+  });
+
+  it("não confere quando o total não veio, em vez de assumir zero", () => {
+    expect(readFeeTax(TARIFAS_BR, undefined, label).reconciliation).toBeUndefined();
+  });
+});
+
+describe("partitionFields", () => {
+  it("separa os campos de referência dos que somam", () => {
+    const { main, reference } = partitionFields(
+      { a: "1", b: "2", c: "3" },
+      ["b"],
+    );
+    expect(Object.keys(main)).toEqual(["a", "c"]);
+    expect(Object.keys(reference)).toEqual(["b"]);
+  });
+
+  it("devolve dois objetos vazios quando não há detalhamento", () => {
+    const { main, reference } = partitionFields(undefined, ["b"]);
+    expect(main).toEqual({});
+    expect(reference).toEqual({});
   });
 });

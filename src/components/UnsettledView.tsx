@@ -21,7 +21,6 @@ import {
   isDelivered,
   pageSums,
   parseEstimatedSettlement,
-  readFeeTax,
   singleCurrency,
   summarizeFormulas,
   unsettledCsv,
@@ -40,7 +39,7 @@ import {
 import { formatEpochBR, formatEpochDateBR } from "../lib/format";
 import { formatMoney, parseMoney } from "../lib/money";
 import { Card, CopyButton, DownloadButton } from "./ui";
-import { BreakdownBlock, Field, Highlight } from "./breakdown";
+import { BreakdownBlock, FeeTaxBlock, Field, Highlight } from "./breakdown";
 
 /**
  * Parâmetros da consulta que gerou esta página, para montar a próxima.
@@ -646,91 +645,15 @@ function TransactionDetail({
             />
           }
         />
-        <FeeTaxColumn tx={tx} currency={currency} />
-      </div>
-    </div>
-  );
-}
-
-/**
- * Tarifas, impostos e — a parte que importa — a CONTA entre eles e
- * `est_fee_tax_amount`.
- *
- * Somar as linhas exibidas não dá o total, por dois motivos que a tela
- * agora separa em vez de misturar: a comissão de afiliado aparece duas
- * vezes (antes e depois do IR do criador), e sobra um valor por pedido
- * que a API cobra sem detalhar em campo nenhum. Antes disso, quem
- * conferia via quatro linhas que não fechavam com o desconto e não tinha
- * como saber onde estava a diferença.
- */
-function FeeTaxColumn({
-  tx,
-  currency,
-}: {
-  tx: UnsettledTransaction;
-  currency: string | undefined;
-}) {
-  const { entries, reference, reconciliation } = useMemo(
-    () => readFeeTax(tx, feeTaxLabel),
-    [tx],
-  );
-
-  const zeros =
-    hiddenFieldCount(tx.fee_tax_breakdown?.fee) + hiddenFieldCount(tx.fee_tax_breakdown?.tax);
-
-  return (
-    <div className="space-y-3">
-      <BreakdownBlock
-        title="Tarifas e impostos estimados"
-        total={parseMoney(tx.est_fee_tax_amount)}
-        entries={entries}
-        zeros={zeros}
-        currency={currency}
-      />
-
-      {reconciliation !== undefined && !reconciliation.matches && (
-        <div className="panel px-3 py-2">
-          <dl className="space-y-0.5 text-xs">
-            <div className="flex items-center justify-between gap-2">
-              <dt className="t-4">Soma das linhas acima</dt>
-              <dd className="shrink-0 font-medium t-1">
-                {formatMoney(reconciliation.sum, currency)}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <dt className="t-2">Cobrado sem detalhamento</dt>
-              <dd
-                className={`shrink-0 font-semibold ${
-                  reconciliation.undetailed < 0 ? "text-red-600" : "t-1"
-                }`}
-              >
-                {formatMoney(reconciliation.undetailed, currency)}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-2 border-t pt-0.5">
-              <dt className="font-medium t-2">Total (est_fee_tax_amount)</dt>
-              <dd className="shrink-0 font-semibold t-1">
-                {formatMoney(reconciliation.total, currency)}
-              </dd>
-            </div>
-          </dl>
-          <p className="mt-1 text-[10px] t-4">
-            A API cobra esta diferença sem informar em qual campo ela entra — nenhum dos campos de{" "}
-            <code>fee</code> ou <code>tax</code> a reporta. Ela está no total e, portanto, já foi
-            descontada do repasse estimado.
-          </p>
-        </div>
-      )}
-
-      {reference.length > 0 && (
-        <BreakdownBlock
-          title="Comissão de afiliado — recortes"
-          note="Não somam: são a mesma comissão acima, vista antes do IR do criador."
-          entries={reference}
-          zeros={0}
+        <FeeTaxBlock
+          title="Tarifas e impostos estimados"
+          breakdown={tx.fee_tax_breakdown}
+          total={parseMoney(tx.est_fee_tax_amount)}
+          totalField="est_fee_tax_amount"
           currency={currency}
+          labelFor={feeTaxLabel}
         />
-      )}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,9 @@
-import type { StatementTransaction, StatementTransactionsData } from "../types/tiktok";
+import type {
+  FeeTaxBreakdown,
+  StatementTransaction,
+  StatementTransactionsData,
+} from "../types/tiktok";
+import { FEE_REFERENCE_FIELDS } from "./statementLabels";
 import {
   addMoney,
   isZero,
@@ -129,6 +134,61 @@ export function hiddenFieldCount(source: object | undefined): number {
   return Object.values(source).filter(
     (raw) => typeof raw === "string" && isZero(parseMoney(raw)),
   ).length;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tarifas e impostos: o que a API detalha e o que ela não detalha     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Confere o total de tarifas/impostos contra a soma das linhas de `fee` e
+ * `tax`. Serve aos dois endpoints que devolvem esse bloco — o extrato
+ * (`fee_tax_amount`) e as transações a liquidar (`est_fee_tax_amount`).
+ *
+ * POR QUE ISSO PRECISA APARECER NA TELA: as duas contas não fecham, e não
+ * é erro de leitura. Em pedidos reais de uma loja BR observam-se duas
+ * coisas ao mesmo tempo:
+ *
+ * 1. `affiliate_commission_before_pit_amount` repete o valor de
+ *    `affiliate_commission_amount` (é a mesma comissão antes do IR do
+ *    criador). Somar as duas conta a comissão em dobro — por isso os
+ *    campos de `FEE_REFERENCE_FIELDS` ficam fora da soma.
+ * 2. Mesmo descontando a duplicação, sobra um valor FIXO por pedido que o
+ *    total inclui e que nenhum dos ~35 campos de `fee` reporta.
+ *
+ * Em vez de esconder a diferença, ela vira uma linha explícita. Somar as
+ * linhas na mão e não bater com o repasse, sem saber onde procurar, é o
+ * problema que esta função existe para evitar.
+ */
+export interface FeeTaxReading {
+  /** Linhas que somam, de `fee` e `tax` juntas, maior impacto primeiro. */
+  entries: AmountEntry[];
+  /** Linhas que só detalham outra (comissão de afiliado antes do IR, IR retido). */
+  reference: AmountEntry[];
+  /** Soma × total declarado, com a diferença não detalhada. */
+  reconciliation: BreakdownReconciliation | undefined;
+  /** Campos de `fee` e `tax` omitidos por virem zerados ou vazios. */
+  zeros: number;
+}
+
+export function readFeeTax(
+  breakdown: FeeTaxBreakdown | undefined,
+  total: Money | undefined,
+  labelFor: (field: string) => string,
+): FeeTaxReading {
+  const { main, reference } = partitionFields(breakdown?.fee, FEE_REFERENCE_FIELDS);
+
+  const entries = [
+    ...nonZeroEntries(main, labelFor),
+    ...nonZeroEntries(breakdown?.tax, labelFor),
+  ].sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+
+  return {
+    entries,
+    reference: nonZeroEntries(reference, labelFor),
+    reconciliation: reconcileBreakdown(entries, total),
+    zeros: hiddenFieldCount(breakdown?.fee) + hiddenFieldCount(breakdown?.tax),
+  };
 }
 
 /** Totais por tipo de transação — a visão que responde "no que foi o desconto". */

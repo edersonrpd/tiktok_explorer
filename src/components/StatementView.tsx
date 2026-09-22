@@ -31,7 +31,7 @@ import {
 import { formatEpochBR, formatEpochDateBR } from "../lib/format";
 import { formatMoney, parseMoney } from "../lib/money";
 import { Card, CopyButton } from "./ui";
-import { BreakdownBlock, Field, Highlight } from "./breakdown";
+import { BreakdownBlock, FeeTaxBlock, Field, Highlight } from "./breakdown";
 
 /** Parâmetros da consulta que gerou esta página, para montar a próxima. */
 export interface StatementPageQuery {
@@ -443,17 +443,13 @@ function TransactionDetail({
           }
         />
         <div className="space-y-4">
-          <BreakdownBlock
-            title="Tarifas"
-            entries={nonZeroEntries(tx.fee_tax_breakdown?.fee, feeTaxLabel)}
-            zeros={hiddenFieldCount(tx.fee_tax_breakdown?.fee)}
+          <FeeTaxBlock
+            title="Tarifas e impostos"
+            breakdown={tx.fee_tax_breakdown}
+            total={parseMoney(tx.fee_tax_amount)}
+            totalField="fee_tax_amount"
             currency={currency}
-          />
-          <BreakdownBlock
-            title="Impostos"
-            entries={nonZeroEntries(tx.fee_tax_breakdown?.tax, feeTaxLabel)}
-            zeros={hiddenFieldCount(tx.fee_tax_breakdown?.tax)}
-            currency={currency}
+            labelFor={feeTaxLabel}
           />
           <BreakdownBlock
             title="Valores de referência"
