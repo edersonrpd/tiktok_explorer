@@ -50,28 +50,36 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 /**
- * Baixa um texto como arquivo. Existe ao lado do CopyButton porque os
- * dois resolvem problemas diferentes: copiar serve para colar numa
- * planilha já aberta; baixar entrega o arquivo para anexar, versionar ou
- * abrir com dois cliques — que é o que se faz com um fechamento
- * financeiro.
+ * Baixa um arquivo. Existe ao lado do CopyButton porque os dois resolvem
+ * problemas diferentes: copiar serve para colar numa planilha já aberta;
+ * baixar entrega o arquivo para anexar, versionar ou abrir com dois
+ * cliques — que é o que se faz com um fechamento financeiro.
  *
- * O BOM (\uFEFF) no início não é decorativo: sem ele o Excel lê o arquivo
- * como Latin-1 e "Transações" vira "TransaÃ§Ãµes".
+ * `build` devolve o conteúdo e só roda no clique: gerar um .xlsx a cada
+ * re-render, para um arquivo que talvez ninguém baixe, é trabalho jogado
+ * fora a cada tecla digitada no filtro.
+ *
+ * Texto ganha o BOM (\uFEFF), e isso não é decorativo: sem ele o Excel lê
+ * o CSV como Latin-1 e "Transações" vira "TransaÃ§Ãµes". Bytes vão como
+ * estão — um .xlsx é binário e um BOM o corromperia.
  */
 export function DownloadButton({
-  text,
+  build,
   filename,
   label,
   mimeType = "text/csv;charset=utf-8",
 }: {
-  text: string;
+  build: () => string | Uint8Array;
   filename: string;
   label: string;
   mimeType?: string;
 }) {
   const handleDownload = () => {
-    const blob = new Blob([`\uFEFF${text}`], { type: mimeType });
+    const content = build();
+    const blob =
+      typeof content === "string"
+        ? new Blob([`\uFEFF${content}`], { type: mimeType })
+        : new Blob([content as unknown as BlobPart], { type: mimeType });
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement("a");

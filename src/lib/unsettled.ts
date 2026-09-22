@@ -10,6 +10,9 @@ import {
   type Money,
 } from "./money";
 import { readFeeTax } from "./statements";
+import { labelForType } from "./statementLabels";
+import { formatEpochBR } from "./format";
+import { buildXlsx, type XlsxCell } from "./xlsx";
 
 /**
  * Leitura de Get Unsettled Transactions (/finance/202507/orders/unsettled).
@@ -355,81 +358,139 @@ export function filterTransactions(
 /* ------------------------------------------------------------------ */
 
 /**
- * Colunas da exportação, na ordem. Uma definição só alimenta as duas
- * saídas — copiar (TAB, valores crus) e baixar (CSV pt-BR) —, para que o
- * que o usuário cola e o que ele baixa nunca divirjam.
+ * Colunas da exportação, na ordem, com CABEÇALHO EM PORTUGUÊS — quem abre
+ * o arquivo é o financeiro, não quem lê a documentação da API.
  *
- * `money: true` marca as colunas que o Excel deve tratar como número:
- * na saída CSV o ponto decimal da API vira vírgula.
+ * Uma definição só alimenta os três formatos (copiar, CSV e Excel), para
+ * que o que se cola, o que se baixa e o que se abre nunca divirjam. Cada
+ * célula declara o seu TIPO em vez de já vir como texto: é o que permite
+ * ao .xlsx gravar número como número e data como data, em vez de mandar
+ * tudo como string e deixar o Excel adivinhar.
  */
-const COLUMNS: Array<{
+export type ExportCell =
+  | { kind: "text"; value: string }
+  | { kind: "money"; value: Money | undefined }
+  /** Epoch em segundos. */
+  | { kind: "date"; value: number | undefined };
+
+export interface ExportColumn {
   header: string;
-  money: boolean;
-  value: (tx: UnsettledTransaction) => string;
-}> = [
-  { header: "transaction_id", money: false, value: (tx) => tx.id },
-  { header: "type", money: false, value: (tx) => tx.type ?? "" },
-  { header: "status", money: false, value: (tx) => tx.status ?? "" },
-  { header: "currency", money: false, value: (tx) => tx.currency ?? "" },
+  /** Largura da coluna no Excel, em caracteres. */
+  width: number;
+  cell: (tx: UnsettledTransaction) => ExportCell;
+}
+
+const text = (value: string | undefined): ExportCell => ({ kind: "text", value: value ?? "" });
+
+export const EXPORT_COLUMNS: ExportColumn[] = [
+  { header: "ID da transação", width: 22, cell: (tx) => text(tx.id) },
+  // Tipo traduzido para leitura e código cru ao lado: o rótulo é o que a
+  // pessoa entende, o código é o que filtra e agrupa numa tabela dinâmica.
+  { header: "Tipo", width: 26, cell: (tx) => text(labelForType(tx.type)) },
+  { header: "Tipo (código)", width: 26, cell: (tx) => text(tx.type) },
+  { header: "Status", width: 12, cell: (tx) => text(tx.status) },
+  { header: "Moeda", width: 8, cell: (tx) => text(tx.currency) },
   {
-    header: "order_id",
-    money: false,
-    value: (tx) => tx.order_id ?? tx.adjustment_order_id ?? "",
+    header: "Pedido",
+    width: 22,
+    cell: (tx) => text(tx.order_id ?? tx.adjustment_order_id),
   },
-  { header: "adjustment_id", money: false, value: (tx) => tx.adjustment_id ?? "" },
-  { header: "order_create_time", money: false, value: (tx) => isoOrEmpty(tx.order_create_time) },
+  { header: "Ajuste", width: 22, cell: (tx) => text(tx.adjustment_id) },
+  { header: "Criado em", width: 18, cell: (tx) => ({ kind: "date", value: tx.order_create_time }) },
   {
-    header: "order_delivery_time",
-    money: false,
-    value: (tx) => isoOrEmpty(tx.order_delivery_time),
-  },
-  {
-    header: "estimated_settlement",
-    // Sai como veio: pode ser epoch ou a frase da política, e é a string
-    // original que explica por que o valor ainda não é definitivo.
-    money: false,
-    value: (tx) => tx.estimated_settlement ?? "",
+    header: "Entregue em",
+    width: 18,
+    cell: (tx) => ({ kind: "date", value: tx.order_delivery_time }),
   },
   {
-    header: "unsettled_reason",
-    money: false,
-    value: (tx) => tx.unsettled_reason ?? "",
+    header: "Liquidação prevista",
+    width: 24,
+    // O campo é data OU a frase da política, conforme o pedido já tenha
+    // sido entregue. A coluna acompanha: quando há data, vai como data de
+    // verdade (ordena e filtra); quando é política, vai o texto original.
+    // Exportar o epoch cru daria uma coluna com "1685548800" dentro.
+    cell: (tx) => {
+      const parsed = parseEstimatedSettlement(tx.estimated_settlement);
+      if (parsed === undefined) return text("");
+      return parsed.kind === "date"
+        ? { kind: "date", value: parsed.epoch }
+        : text(parsed.text);
+    },
   },
-  { header: "est_revenue", money: true, value: (tx) => tx.est_revenue_amount ?? "" },
-  { header: "est_shipping_cost", money: true, value: (tx) => tx.est_shipping_cost_amount ?? "" },
-  { header: "est_fee_tax", money: true, value: (tx) => tx.est_fee_tax_amount ?? "" },
+  { header: "Motivo da pendência", width: 32, cell: (tx) => text(tx.unsettled_reason) },
+  {
+    header: "Receita estimada",
+    width: 18,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.est_revenue_amount) }),
+  },
+  {
+    header: "Frete estimado",
+    width: 16,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.est_shipping_cost_amount) }),
+  },
+  {
+    header: "Tarifas e impostos estimados",
+    width: 26,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.est_fee_tax_amount) }),
+  },
   {
     // A parte de est_fee_tax que nenhum campo de fee/tax reporta. Sem esta
     // coluna, reconstruir a taxa na planilha a partir do detalhamento não
     // fecha e não há pista de quanto falta.
-    header: "est_fee_tax_nao_detalhado",
-    money: true,
-    value: (tx) => {
-      const undetailed = undetailedFeeTax(tx);
-      return undetailed === undefined ? "" : toDecimalString(undetailed);
-    },
+    header: "Tarifas sem detalhamento",
+    width: 24,
+    cell: (tx) => ({ kind: "money", value: undetailedFeeTax(tx) }),
   },
-  { header: "est_adjustment", money: true, value: (tx) => tx.est_adjustment_amount ?? "" },
-  { header: "est_settlement", money: true, value: (tx) => tx.est_settlement_amount ?? "" },
+  {
+    header: "Ajuste estimado",
+    width: 18,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.est_adjustment_amount) }),
+  },
+  {
+    header: "Repasse estimado",
+    width: 18,
+    cell: (tx) => ({ kind: "money", value: parseMoney(tx.est_settlement_amount) }),
+  },
 ];
 
-/** Texto livre da API pode ter TAB ou quebra de linha, que quebram a linha da planilha. */
+/** Texto livre da API pode ter TAB ou quebra de linha, que quebram a linha. */
 function flatten(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function cells(tx: UnsettledTransaction): string[] {
-  return COLUMNS.map((column) => flatten(column.value(tx)));
+/** Data/hora local no formato brasileiro, como o resto da aplicação mostra. */
+function dateForText(epochSeconds: number | undefined): string {
+  if (epochSeconds === undefined || epochSeconds <= 0) return "";
+  return formatEpochBR(epochSeconds);
 }
 
 /**
- * Uma linha por transação, separada por TAB, com os valores BRUTOS — o
- * formato de COLAR: o Excel divide por TAB sozinho e os números vão com
- * ponto decimal, como a API devolveu.
+ * Renderiza uma célula como texto. `decimal` decide o separador: ponto no
+ * formato de colar (como a API devolveu) e vírgula no CSV em português.
+ */
+function cellText(cell: ExportCell, decimal: "." | ","): string {
+  switch (cell.kind) {
+    case "text":
+      return flatten(cell.value);
+    case "date":
+      return dateForText(cell.value);
+    case "money": {
+      if (cell.value === undefined) return "";
+      const value = toDecimalString(cell.value);
+      return decimal === "," ? value.replace(".", ",") : value;
+    }
+  }
+}
+
+/**
+ * Uma linha por transação, separada por TAB — o formato de COLAR: o Excel
+ * divide por TAB sozinho, sem passar pelo assistente de importação.
  */
 export function unsettledTsv(transactions: UnsettledTransaction[]): string {
-  const header = COLUMNS.map((column) => column.header).join("\t");
-  const rows = transactions.map((tx) => cells(tx).join("\t"));
+  const header = EXPORT_COLUMNS.map((column) => column.header).join("\t");
+  const rows = transactions.map((tx) =>
+    EXPORT_COLUMNS.map((column) => cellText(column.cell(tx), ".")).join("\t"),
+  );
   return [header, ...rows].join("\n");
 }
 
@@ -449,30 +510,61 @@ function csvCell(value: string): string {
  * entra como texto e não soma.
  */
 export function unsettledCsv(transactions: UnsettledTransaction[]): string {
-  const header = COLUMNS.map((column) => csvCell(column.header)).join(";");
-
+  const header = EXPORT_COLUMNS.map((column) => csvCell(column.header)).join(";");
   const rows = transactions.map((tx) =>
-    cells(tx)
-      .map((value, index) =>
-        csvCell(COLUMNS[index]?.money === true ? value.replace(".", ",") : value),
-      )
-      .join(";"),
+    EXPORT_COLUMNS.map((column) => csvCell(cellText(column.cell(tx), ","))).join(";"),
   );
-
   return [header, ...rows].join("\r\n");
 }
 
+/**
+ * Arquivo .xlsx de verdade.
+ *
+ * A vantagem sobre o CSV não é o formato em si: é que aqui o número vai
+ * como NÚMERO e a data como DATA. Não existe a questão de ponto ou
+ * vírgula decimal — quem decide a exibição é o Excel, pelo idioma da
+ * máquina —, e datas ordenam e filtram de verdade em vez de ordenarem
+ * como texto.
+ */
+export function unsettledXlsx(
+  transactions: UnsettledTransaction[],
+  modified?: Date,
+): Uint8Array {
+  const rows: XlsxCell[][] = transactions.map((tx) =>
+    EXPORT_COLUMNS.map((column): XlsxCell => {
+      const cell = column.cell(tx);
+
+      switch (cell.kind) {
+        case "text": {
+          const value = flatten(cell.value);
+          return value === "" ? { kind: "empty" } : { kind: "text", value };
+        }
+        case "date":
+          return cell.value === undefined || cell.value <= 0
+            ? { kind: "empty" }
+            : { kind: "date", value: new Date(cell.value * 1000) };
+        case "money":
+          return cell.value === undefined
+            ? { kind: "empty" }
+            : { kind: "money", value: Number(toDecimalString(cell.value)) };
+      }
+    }),
+  );
+
+  return buildXlsx({
+    sheetName: "A liquidar",
+    columns: EXPORT_COLUMNS.map((column) => ({ header: column.header, width: column.width })),
+    rows,
+    modified,
+  });
+}
+
 /** Nome do arquivo baixado, com a data para não sobrescrever o anterior. */
-export function unsettledFileName(now: Date = new Date()): string {
+export function unsettledFileName(extension: "csv" | "xlsx", now: Date = new Date()): string {
   const stamp = [
     now.getFullYear(),
     String(now.getMonth() + 1).padStart(2, "0"),
     String(now.getDate()).padStart(2, "0"),
   ].join("-");
-  return `transacoes-a-liquidar-${stamp}.csv`;
-}
-
-function isoOrEmpty(epochSeconds: number | undefined): string {
-  if (epochSeconds === undefined || epochSeconds <= 0) return "";
-  return new Date(epochSeconds * 1000).toISOString();
+  return `transacoes-a-liquidar-${stamp}.${extension}`;
 }

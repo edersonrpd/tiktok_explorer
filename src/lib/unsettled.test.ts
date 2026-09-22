@@ -14,6 +14,7 @@ import {
   unsettledFileName,
   unsettledTotalsByType,
   unsettledTsv,
+  unsettledXlsx,
 } from "./unsettled";
 import { toDecimalString } from "./money";
 import type { UnsettledTransaction, UnsettledTransactionsData } from "../types/tiktok";
@@ -276,14 +277,16 @@ describe("singleCurrency", () => {
 });
 
 describe("unsettledTsv", () => {
-  it("exporta os valores BRUTOS, que são os que reconciliam na planilha", () => {
+  it("usa cabeçalho em português e ponto decimal, o formato de colar", () => {
     const lines = unsettledTsv(sampleTransactions).split("\n");
-    expect(lines[0]?.split("\t")).toContain("est_settlement");
-    const row = lines[1]?.split("\t") ?? [];
-    expect(row).toContain("576463220456522968");
-    expect(row).toContain("130");
-    // O epoch sai como veio: é a string original que explica o estado.
-    expect(row).toContain("1685548800");
+    const columns = lines[0]?.split("\t") ?? [];
+    const cells = lines[1]?.split("\t") ?? [];
+    const at = (name: string) => cells[columns.indexOf(name)];
+
+    expect(columns).toContain("Repasse estimado");
+    expect(at("Pedido")).toBe("576463220456522968");
+    // Ponto, e não vírgula: aqui o destino é colar numa planilha aberta.
+    expect(at("Repasse estimado")).toBe("130.00");
   });
 
   it("achata o motivo em uma linha, para não arrebentar a coluna", () => {
@@ -377,27 +380,37 @@ describe("undetailedFeeTax", () => {
 describe("unsettledCsv", () => {
   const csv = unsettledCsv([PEDIDO_BR]);
   const [header, row] = csv.split("\r\n");
+  const columns = header?.split(";") ?? [];
+  const cells = row?.split(";") ?? [];
+  const at = (name: string) => cells[columns.indexOf(name)];
+
+  it("traz os cabeçalhos em português", () => {
+    expect(columns).toContain("Repasse estimado");
+    expect(columns).toContain("Tarifas sem detalhamento");
+    expect(columns).not.toContain("est_settlement");
+  });
 
   it("usa ponto-e-vírgula, que é o separador do Excel em português", () => {
-    expect(header?.split(";")).toContain("est_settlement");
     expect(csv).not.toContain("\t");
   });
 
   it("usa vírgula decimal, senão o Excel pt-BR lê o valor como texto", () => {
-    expect(row?.split(";")).toContain("189,2");
-    expect(row?.split(";")).toContain("144,42");
+    expect(at("Receita estimada")).toBe("189,20");
+    expect(at("Repasse estimado")).toBe("144,42");
   });
 
   it("traz o valor não detalhado como coluna própria", () => {
-    const columns = header?.split(";") ?? [];
-    const index = columns.indexOf("est_fee_tax_nao_detalhado");
-    expect(index).toBeGreaterThan(-1);
-    expect(row?.split(";")[index]).toBe("-6,00");
+    expect(at("Tarifas sem detalhamento")).toBe("-6,00");
+  });
+
+  it("traduz o tipo e mantém o código ao lado, para filtrar", () => {
+    expect(at("Tipo")).toBe("Pedido");
+    expect(at("Tipo (código)")).toBe("ORDER");
   });
 
   it("não converte decimal em coluna que não é dinheiro", () => {
-    // "Delivered + 7 days" e datas ISO não podem virar número.
-    expect(row).toContain("Delivered + 7 days");
+    // "Delivered + 7 days" não pode virar número.
+    expect(at("Liquidação prevista")).toBe("Delivered + 7 days");
   });
 
   it("termina as linhas com CRLF, como o Excel espera", () => {
@@ -406,9 +419,33 @@ describe("unsettledCsv", () => {
 });
 
 describe("unsettledFileName", () => {
-  it("carimba a data para não sobrescrever a exportação anterior", () => {
-    expect(unsettledFileName(new Date(2026, 8, 22))).toBe(
+  it("carimba a data e a extensão pedida", () => {
+    expect(unsettledFileName("csv", new Date(2026, 8, 22))).toBe(
       "transacoes-a-liquidar-2026-09-22.csv",
     );
+    expect(unsettledFileName("xlsx", new Date(2026, 8, 22))).toBe(
+      "transacoes-a-liquidar-2026-09-22.xlsx",
+    );
+  });
+});
+
+describe("unsettledXlsx", () => {
+  it("gera um arquivo ZIP, que é o que um .xlsx é por dentro", () => {
+    const bytes = unsettledXlsx([PEDIDO_BR]);
+    // "PK" — a assinatura de todo ZIP.
+    expect(bytes[0]).toBe(0x50);
+    expect(bytes[1]).toBe(0x4b);
+    expect(bytes.length).toBeGreaterThan(500);
+  });
+
+  it("é determinístico com a mesma data, para o arquivo ser comparável", () => {
+    const when = new Date(2026, 8, 22, 10, 0, 0);
+    const a = unsettledXlsx([PEDIDO_BR], when);
+    const b = unsettledXlsx([PEDIDO_BR], when);
+    expect(a).toEqual(b);
+  });
+
+  it("não quebra com a lista vazia", () => {
+    expect(unsettledXlsx([]).length).toBeGreaterThan(500);
   });
 });

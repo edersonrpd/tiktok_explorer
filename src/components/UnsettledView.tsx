@@ -25,6 +25,7 @@ import {
   summarizeFormulas,
   unsettledCsv,
   unsettledFileName,
+  unsettledXlsx,
   unsettledTotalsByType,
   unsettledTsv,
 } from "../lib/unsettled";
@@ -404,9 +405,15 @@ function TransactionsCard({
       actions={
         <div className="flex items-center gap-2">
           <DownloadButton
-            text={unsettledCsv(visible)}
-            filename={unsettledFileName()}
-            label="Baixar planilha"
+            build={() => unsettledXlsx(visible)}
+            filename={unsettledFileName("xlsx")}
+            mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            label="Excel"
+          />
+          <DownloadButton
+            build={() => unsettledCsv(visible)}
+            filename={unsettledFileName("csv")}
+            label="CSV"
           />
           <CopyButton text={unsettledTsv(visible)} label="Copiar" />
         </div>

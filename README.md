@@ -293,19 +293,39 @@ path + query intactos.
     diferença também vira a coluna `est_fee_tax_nao_detalhado` na
     exportação.
 
-  - **Exportação da tabela** em dois formatos, sempre do que está na tela
-    (se você filtrou 3 pedidos, são esses 3 que saem):
-    - *Baixar planilha* gera um `.csv` no dialeto que o Excel em
-      português abre com dois cliques — separador `;` (a vírgula ali é o
-      decimal), vírgula decimal nos valores monetários e BOM UTF-8, sem o
-      qual "Transações" vira "TransaÃ§Ãµes". O nome sai carimbado com a
-      data.
-    - *Copiar* mantém o TAB com os valores crus, para colar numa planilha
-      já aberta.
+  - **Exportação da tabela** em três formatos, com **cabeçalhos em
+    português** e sempre do que está na tela (se você filtrou 3 pedidos,
+    são esses 3 que saem):
+    - *Excel* gera um `.xlsx` de verdade. É o formato a preferir: número
+      vai como **número** e data como **data**, então não existe a questão
+      de ponto ou vírgula decimal — quem decide a exibição é o Excel, pelo
+      idioma da máquina — e as datas ordenam e filtram de verdade, em vez
+      de ordenarem como texto. Sai com cabeçalho em negrito, primeira
+      linha congelada, filtro automático e largura de coluna.
+    - *CSV* gera o dialeto que o Excel em português abre com dois cliques:
+      separador `;` (a vírgula ali é o decimal), vírgula decimal nos
+      valores e BOM UTF-8, sem o qual "Transações" vira "TransaÃ§Ãµes".
+      Serve para quem precisa de texto — importar em outro sistema,
+      versionar, abrir no Sheets.
+    - *Copiar* mantém o TAB com ponto decimal, para colar numa planilha já
+      aberta sem passar pelo assistente de importação.
 
-    As duas saídas vêm da **mesma** definição de colunas
-    ([`src/lib/unsettled.ts`](src/lib/unsettled.ts)), então o que se cola
-    e o que se baixa nunca divergem.
+    As três saídas vêm da **mesma** definição de colunas
+    ([`src/lib/unsettled.ts`](src/lib/unsettled.ts)), em que cada célula
+    declara o seu tipo — é isso que deixa o `.xlsx` gravar número como
+    número sem que os outros dois formatos divirjam dele.
+
+    A coluna *Tipo* sai traduzida, com *Tipo (código)* ao lado: o rótulo é
+    o que a pessoa lê, o código é o que filtra e agrupa numa tabela
+    dinâmica. *Liquidação prevista* acompanha o campo da API — vira data
+    quando o pedido já foi entregue e texto da política quando não.
+
+    O `.xlsx` é escrito por [`src/lib/xlsx.ts`](src/lib/xlsx.ts), **sem
+    dependência**: um `.xlsx` é um ZIP com alguns XMLs dentro, e escrever
+    o que esta tela precisa (uma aba de texto, número e data) cabe em um
+    arquivo. As bibliotecas do ecossistema pesam de 800 KB a 1 MB — mais
+    que o bundle inteiro desta aplicação — para resolver leitura,
+    fórmulas, gráficos e formatos legados que aqui nunca serão usados.
 
 - **Extrato financeiro do pedido** ([`src/lib/orderStatement.ts`](src/lib/orderStatement.ts)),
   no cartão de pedidos, em três leituras que se completam:
@@ -365,6 +385,7 @@ src/
   lib/money.ts           # aritmética exata sobre os valores em string da API
   lib/statements.ts      # leitura dos valores do extrato de repasse
   lib/unsettled.ts       # leitura das transações a liquidar (tudo estimado)
+  lib/xlsx.ts            # escrita de .xlsx (ZIP + OOXML), sem dependência
   lib/statementLabels.ts # tradução dos ~70 campos do extrato
   lib/orderStatement.ts  # extrato do pedido: crédito × débito e conferências
   lib/proxyTarget.ts     # lógica do proxy compartilhada entre dev e produção
