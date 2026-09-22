@@ -20,7 +20,7 @@ interface QueryFormProps {
 
 /**
  * Tela de consulta: URL assinada (textarea). O access token é editado no
- * painel lateral e fica só na memória do App. A URL também não persiste,
+ * painel lateral e persistido em localStorage pelo App. A URL não persiste
  * de propósito — expira em minutos e guardar só geraria confusão.
  */
 export function QueryForm({ token, onSubmit, loading }: QueryFormProps) {
