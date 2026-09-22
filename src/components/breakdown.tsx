@@ -85,11 +85,9 @@ export function Highlight({
   strong?: boolean;
 }) {
   return (
-    <div className={`${strong === true ? "panel-success" : "panel"} px-3 py-2`}>
-      <p className="text-[10px] font-bold uppercase tracking-wide t-4">{label}</p>
-      <p className={`font-mono ${strong === true ? "text-base font-bold t-1" : "text-sm t-1"}`}>
-        {value}
-      </p>
+    <div className={`kpi ${strong === true ? "kpi-strong" : ""}`}>
+      <p className="kpi-label">{label}</p>
+      <p className="kpi-value">{value}</p>
     </div>
   );
 }

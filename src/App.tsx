@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Music2, Search } from "lucide-react";
+import { Braces, ChevronDown, ChevronRight, PencilLine, Search } from "lucide-react";
 import { fetchResource, type FetchFailure } from "./lib/api";
 import { runDiagnostics } from "./lib/diagnostics";
 import {
@@ -23,7 +23,7 @@ import type {
   TransactionsByOrderData,
   UnsettledTransactionsData,
 } from "./types/tiktok";
-import { EndpointBuilder } from "./components/EndpointBuilder";
+import { builderTabInfo, EndpointBuilder, type BuilderTab } from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
 import { ErrorDisplay } from "./components/ErrorDisplay";
 import { ProductHeader } from "./components/ProductHeader";
@@ -40,8 +40,7 @@ import {
   StatementListView,
   type StatementListPageQuery,
 } from "./components/StatementListView";
-import { RawJson } from "./components/RawJson";
-import { HistoryList } from "./components/HistoryList";
+import { Sidebar } from "./components/Sidebar";
 import { Card } from "./components/ui";
 import { JsonDrawer } from "./components/JsonDrawer";
 import { Toast } from "./components/Toast";
@@ -64,6 +63,8 @@ export interface HistoryEntry {
   label: string;
   subtitle: string;
   time: Date;
+  /** Path + query enviados — mostrados na barra do resultado. */
+  sentTarget: string;
   response: TikTokApiResponse<unknown>;
   resource: LoadedResource;
 }
@@ -78,7 +79,7 @@ type ViewState =
       signatureAge: number | null;
       sentTarget: string;
     }
-  | { kind: "success"; response: TikTokApiResponse<unknown>; resource: LoadedResource; historyKey: string };
+  | { kind: "success"; entry: HistoryEntry };
 
 /** Lê os `ids` pedidos na query — só para conferir o que voltou, nunca para alterar a URL. */
 function requestedOrderIds(normalized: NormalizedUrl): string[] {
@@ -169,6 +170,12 @@ export default function App() {
   }, [token]);
 
   const [view, setView] = useState<ViewState>({ kind: "idle" });
+  // Aba do passo 1, escolhida no painel lateral. Depois de uma consulta ela
+  // acompanha o tipo do resultado, para "Nova consulta" abrir no lugar certo.
+  const [builderTab, setBuilderTab] = useState<BuilderTab>("product");
+  // Com um resultado na tela, o formulário recolhe para dar espaço a ele —
+  // recolhe só visualmente, sem desmontar, para não perder o que foi digitado.
+  const [queryOpen, setQueryOpen] = useState(true);
   // Histórico só em memória — some ao recarregar a página, de propósito.
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
@@ -259,83 +266,126 @@ export default function App() {
         label,
         subtitle,
         time: new Date(),
+        sentTarget: normalized.pathWithQuery,
         response: result.response,
         resource,
       };
       setHistory((prev) => [entry, ...prev].slice(0, HISTORY_LIMIT));
-      setView({ kind: "success", response: result.response, resource, historyKey: entry.key });
+      setView({ kind: "success", entry });
+      if (kind !== "other") setBuilderTab(kind);
+      setQueryOpen(false);
     },
     [token],
   );
 
   const handleHistorySelect = useCallback((entry: HistoryEntry) => {
     // Recarrega da memória, sem nova chamada à API.
-    setView({
-      kind: "success",
-      response: entry.response,
-      resource: entry.resource,
-      historyKey: entry.key,
-    });
+    setView({ kind: "success", entry });
+    if (entry.resource.kind !== "other") setBuilderTab(entry.resource.kind);
+    setQueryOpen(false);
+  }, []);
+
+  const handleTabSelect = useCallback((tab: BuilderTab) => {
+    setBuilderTab(tab);
+    setQueryOpen(true);
   }, []);
 
   const diagnostics = useMemo(
     () =>
-      view.kind === "success" && view.resource.kind === "product"
-        ? runDiagnostics(view.resource.product)
+      view.kind === "success" && view.entry.resource.kind === "product"
+        ? runDiagnostics(view.entry.resource.product)
         : [],
     [view],
   );
 
+  const activeTab = builderTabInfo(builderTab);
+  const success = view.kind === "success" ? view.entry : null;
+
   return (
-    <div className="min-h-screen">
-      <header className="app-header px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-[1320px] items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="hdr-mark">
-              <Music2 className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-lg font-extrabold leading-none tracking-tight hdr-title">
-                TikTok Shop
-              </h1>
-              <p className="mt-1 text-[11px] font-bold uppercase tracking-widest hdr-sub">
-                Viewer de Anúncios &amp; Pedidos
-              </p>
-            </div>
+    <div className="app-shell">
+      <Sidebar
+        tab={builderTab}
+        onTabSelect={handleTabSelect}
+        history={history}
+        activeHistoryId={success?.key ?? null}
+        onHistorySelect={handleHistorySelect}
+        token={token}
+        onTokenChange={setToken}
+      />
+
+      <div className="app-main">
+        <header className="topbar">
+          <div className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold t-3">
+            <span className="truncate">{activeTab.label}</span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate font-bold t-1">
+              {success !== null && !queryOpen ? "Resultado" : "Nova consulta"}
+            </span>
           </div>
           <div className="hdr-chip">open-api.tiktokglobalshop.com</div>
-        </div>
-      </header>
+        </header>
 
-      <main className="mx-auto max-w-[1320px] space-y-4 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-          <EndpointBuilder />
-          <Card title="2. Consultar" icon={<Search />}>
-            <QueryForm
-              token={token}
-              onTokenChange={setToken}
-              onSubmit={(n) => void handleSubmit(n)}
-              loading={view.kind === "loading"}
-            />
-          </Card>
-        </div>
+        <main className="content">
+          {success !== null && !queryOpen && (
+            <div className="query-bar">
+              <span className="query-method">GET</span>
+              <code className="query-target" title={success.sentTarget}>
+                {success.sentTarget}
+              </code>
+              <button type="button" onClick={() => setQueryOpen(true)} className="btn-primary btn-sm">
+                <PencilLine className="h-3.5 w-3.5" />
+                Nova consulta
+              </button>
+            </div>
+          )}
 
-        <HistoryList
-          entries={history}
-          onSelect={handleHistorySelect}
-          activeId={view.kind === "success" ? view.historyKey : null}
-        />
+          {/* Recolhido com `hidden`, não desmontado: os campos preservam o que foi digitado. */}
+          <div className={queryOpen ? "grid gap-4 lg:grid-cols-2 lg:items-start" : "hidden"}>
+            <EndpointBuilder tab={builderTab} />
+            <Card
+              title="2. Colar a URL assinada e consultar"
+              icon={<Search />}
+              actions={
+                success !== null ? (
+                  <button type="button" onClick={() => setQueryOpen(false)} className="chip">
+                    <ChevronDown className="h-3 w-3" />
+                    Voltar ao resultado
+                  </button>
+                ) : undefined
+              }
+            >
+              <QueryForm
+                token={token}
+                onSubmit={(n) => void handleSubmit(n)}
+                loading={view.kind === "loading"}
+              />
+            </Card>
+          </div>
 
-        <div className="space-y-4">
           {view.kind === "idle" && (
-            <div className="loading-card px-6 py-16 text-center text-sm t-4">
-              Cole a URL assinada e o access token acima e clique em <strong>Consultar</strong>.
+            <div className="empty-state">
+              <ol className="empty-steps">
+                <li>
+                  <span className="step-num">1</span>
+                  Escolha o tipo de consulta no painel lateral e monte o endpoint.
+                </li>
+                <li>
+                  <span className="step-num">2</span>
+                  Assine o endpoint no sistema interno.
+                </li>
+                <li>
+                  <span className="step-num">3</span>
+                  Cole a URL assinada e clique em <strong>Consultar</strong>.
+                </li>
+              </ol>
             </div>
           )}
 
           {view.kind === "loading" && (
-            <div className="loading-card px-6 py-16 text-center text-sm t-3">
-              <span className="inline-block animate-pulse">Consultando a API do TikTok Shop…</span>
+            <div className="empty-state">
+              <span className="inline-block animate-pulse text-sm t-3">
+                Consultando a API do TikTok Shop…
+              </span>
             </div>
           )}
 
@@ -348,71 +398,91 @@ export default function App() {
             />
           )}
 
-          {view.kind === "success" && (
-            <>
-              {view.resource.kind === "product" && (
+          {success !== null && (
+            <section className="space-y-4" aria-label="Resultado">
+              <div className="result-head">
+                <div className="min-w-0">
+                  <h1 className="result-title">{success.label}</h1>
+                  <p className="result-sub">
+                    {success.subtitle}
+                    <span className="t-4">
+                      {" "}
+                      · {success.time.toLocaleTimeString("pt-BR")} · request_id{" "}
+                      <span className="select-all font-mono">{success.response.request_id}</span>
+                    </span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setJsonDrawerOpen(true)}
+                  className="btn-secondary shrink-0"
+                >
+                  <Braces className="h-3.5 w-3.5" />
+                  JSON bruto
+                </button>
+              </div>
+
+              {success.resource.kind === "product" && (
                 <>
-                  <ProductHeader product={view.resource.product} onToast={displayToast} />
+                  <ProductHeader product={success.resource.product} onToast={displayToast} />
                   <DiagnosticsPanel alerts={diagnostics} />
-                  <SkuTable skus={view.resource.product.skus ?? []} />
+                  <SkuTable skus={success.resource.product.skus ?? []} />
                   <Gallery
-                    images={view.resource.product.main_images ?? []}
-                    video={view.resource.product.video}
+                    images={success.resource.product.main_images ?? []}
+                    video={success.resource.product.video}
                   />
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <AttributesCard attributes={view.resource.product.product_attributes ?? []} />
+                    <AttributesCard attributes={success.resource.product.product_attributes ?? []} />
                     <PackageCard
-                      dimensions={view.resource.product.package_dimensions}
-                      weight={view.resource.product.package_weight}
+                      dimensions={success.resource.product.package_dimensions}
+                      weight={success.resource.product.package_weight}
                     />
                   </div>
-                  <DescriptionCard html={view.resource.product.description} />
+                  <DescriptionCard html={success.resource.product.description} />
                 </>
               )}
 
-              {view.resource.kind === "order" && (
+              {success.resource.kind === "order" && (
                 <OrderView
-                  orders={view.resource.orders}
-                  requestedIds={view.resource.requestedIds}
+                  orders={success.resource.orders}
+                  requestedIds={success.resource.requestedIds}
                 />
               )}
 
-              {view.resource.kind === "transaction" && (
-                <TransactionView data={view.resource.data} />
+              {success.resource.kind === "transaction" && (
+                <TransactionView data={success.resource.data} />
               )}
 
-              {view.resource.kind === "statement" && (
-                <StatementView data={view.resource.statement} query={view.resource.query} />
+              {success.resource.kind === "statement" && (
+                <StatementView data={success.resource.statement} query={success.resource.query} />
               )}
 
-              {view.resource.kind === "unsettled" && (
-                <UnsettledView data={view.resource.unsettled} query={view.resource.query} />
+              {success.resource.kind === "unsettled" && (
+                <UnsettledView data={success.resource.unsettled} query={success.resource.query} />
               )}
 
-              {view.resource.kind === "statementList" && (
-                <StatementListView data={view.resource.list} query={view.resource.query} />
+              {success.resource.kind === "statementList" && (
+                <StatementListView data={success.resource.list} query={success.resource.query} />
               )}
 
-              {view.resource.kind === "other" && (
+              {success.resource.kind === "other" && (
                 <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
-                  Endpoint sem exibição dedicada nesta aplicação — a resposta completa está no JSON
-                  bruto abaixo.
+                  Endpoint sem exibição dedicada nesta aplicação — a resposta completa está no{" "}
+                  <strong>JSON bruto</strong>, no botão acima.
                 </div>
               )}
-
-              <RawJson response={view.response} onView={() => setJsonDrawerOpen(true)} />
-            </>
+            </section>
           )}
-        </div>
-      </main>
+        </main>
+      </div>
 
-      {view.kind === "success" && (
+      {success !== null && (
         <JsonDrawer
           isOpen={jsonDrawerOpen}
           onClose={() => setJsonDrawerOpen(false)}
-          data={view.response}
+          data={success.response}
           title="Resposta da API"
-          subtitle={view.response.code === 0 ? "OK" : `code ${view.response.code}`}
+          subtitle={success.response.code === 0 ? "OK" : `code ${success.response.code}`}
           onToast={displayToast}
         />
       )}

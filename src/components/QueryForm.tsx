@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, Info, Search, Eye, EyeOff } from "lucide-react";
+import { AlertTriangle, Info, KeyRound, Search } from "lucide-react";
 import {
   decodeSeparators,
   describeIssue,
@@ -12,20 +12,19 @@ import { formatAge } from "../lib/format";
 import { ParamsPanel } from "./ParamsPanel";
 
 interface QueryFormProps {
+  /** Só para habilitar o envio — o campo do token fica no painel lateral. */
   token: string;
-  onTokenChange: (token: string) => void;
   onSubmit: (normalized: NormalizedUrl) => void;
   loading: boolean;
 }
 
 /**
- * Tela de consulta: URL assinada (textarea) + access token (persistido em
- * localStorage pelo App). A URL não persiste de propósito — expira em
- * minutos e guardar só geraria confusão.
+ * Tela de consulta: URL assinada (textarea). O access token é editado no
+ * painel lateral e persistido em localStorage pelo App. A URL não persiste
+ * de propósito — expira em minutos e guardar só geraria confusão.
  */
-export function QueryForm({ token, onTokenChange, onSubmit, loading }: QueryFormProps) {
+export function QueryForm({ token, onSubmit, loading }: QueryFormProps) {
   const [url, setUrl] = useState("");
-  const [showToken, setShowToken] = useState(false);
 
   // Normaliza e valida a cada tecla; o painel de parâmetros fica sempre visível.
   const normalized = useMemo(() => normalizeSignedUrl(url), [url]);
@@ -63,34 +62,6 @@ export function QueryForm({ token, onTokenChange, onSubmit, loading }: QueryForm
             </span>
           </p>
         )}
-      </div>
-
-      <div>
-        <label htmlFor="access-token" className="mb-1 block text-xs font-bold t-3">
-          Access token (header x-tts-access-token)
-        </label>
-        <div className="flex gap-2">
-          <input
-            id="access-token"
-            type={showToken ? "text" : "password"}
-            value={token}
-            onChange={(e) => onTokenChange(e.target.value)}
-            spellCheck={false}
-            placeholder="ROW_..."
-            className="inp font-mono"
-          />
-          <button
-            type="button"
-            onClick={() => setShowToken((v) => !v)}
-            className="btn-secondary shrink-0"
-          >
-            {showToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            {showToken ? "Ocultar" : "Mostrar"}
-          </button>
-        </div>
-        <p className="mt-1 text-[11px] t-4">
-          O token fica salvo neste navegador (localStorage). A URL assinada não é salva.
-        </p>
       </div>
 
       {hasInput && blocked && (
@@ -136,6 +107,13 @@ export function QueryForm({ token, onTokenChange, onSubmit, loading }: QueryForm
       )}
 
       <ParamsPanel params={validation.params} resourceKind={validation.resourceKind} />
+
+      {token.trim() === "" && (
+        <p className="flex items-center gap-1.5 text-xs t-3">
+          <KeyRound className="h-3.5 w-3.5 shrink-0" />
+          Informe o access token no painel lateral para poder consultar.
+        </p>
+      )}
 
       <button type="button" disabled={!canSubmit} onClick={() => onSubmit(normalized)} className="btn-primary w-full">
         <Search className="h-4 w-4" />

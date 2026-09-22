@@ -1,11 +1,10 @@
-import { History } from "lucide-react";
 import type { HistoryEntry } from "../App";
-import { Card } from "./ui";
 
 /**
  * Últimas consultas bem-sucedidas da sessão (só em memória — some ao
  * recarregar). Clicar recarrega o resultado guardado, sem nova chamada.
- * Layout horizontal porque agora ocupa a largura toda, acima dos resultados.
+ * Vive no painel lateral, em lista vertical, para não empurrar o resultado
+ * para baixo.
  */
 export function HistoryList({
   entries,
@@ -16,29 +15,33 @@ export function HistoryList({
   onSelect: (entry: HistoryEntry) => void;
   activeId: string | null;
 }) {
-  if (entries.length === 0) return null;
-
   return (
-    <Card title="Histórico da sessão" icon={<History />} count={entries.length}>
-      <div className="flex flex-wrap gap-2">
-        {entries.map((entry) => (
-          <button
-            key={entry.key}
-            type="button"
-            onClick={() => onSelect(entry)}
-            className={`max-w-[240px] rounded-[var(--radius-sm)] border px-2.5 py-1.5 text-left transition-colors ${
-              activeId === entry.key
-                ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                : "border-[var(--border)] bg-[var(--surface2)] hover:border-[var(--border2)]"
-            }`}
-          >
-            <p className="truncate text-xs font-bold t-1">{entry.label}</p>
-            <p className="truncate font-mono text-[10px] t-4">
-              {entry.subtitle} · {entry.time.toLocaleTimeString("pt-BR")}
-            </p>
-          </button>
-        ))}
-      </div>
-    </Card>
+    <div className="side-section">
+      <p className="side-label">
+        Histórico da sessão
+        {entries.length > 0 && <span className="side-count">{entries.length}</span>}
+      </p>
+      {entries.length === 0 ? (
+        <p className="side-empty">As consultas feitas aparecem aqui.</p>
+      ) : (
+        <ul className="side-history">
+          {entries.map((entry) => (
+            <li key={entry.key}>
+              <button
+                type="button"
+                onClick={() => onSelect(entry)}
+                aria-current={activeId === entry.key ? "true" : undefined}
+                className={`hist-item ${activeId === entry.key ? "hist-active" : ""}`}
+              >
+                <span className="hist-label">{entry.label}</span>
+                <span className="hist-sub">
+                  {entry.subtitle} · {entry.time.toLocaleTimeString("pt-BR")}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

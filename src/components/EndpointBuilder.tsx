@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Banknote, Hourglass, Landmark, Link2, Package, Receipt, Tag } from "lucide-react";
+import { Banknote, Hourglass, Landmark, Link2, Package, Receipt, Tag, type LucideIcon } from "lucide-react";
 import {
   buildOrderEndpoint,
   buildProductEndpoint,
@@ -31,13 +31,52 @@ import {
 import { TIKTOK_API_HOST } from "../lib/signedUrl";
 import { Card, CopyButton } from "./ui";
 
-type BuilderTab =
+export type BuilderTab =
   | "product"
   | "order"
   | "transaction"
   | "statementList"
   | "statement"
   | "unsettled";
+
+/**
+ * Os tipos de consulta, na ordem do menu lateral. Ficam aqui, junto do
+ * formulário que cada um abre, para o menu e o formulário não divergirem.
+ */
+export const BUILDER_TABS: { id: BuilderTab; label: string; hint: string; icon: LucideIcon }[] = [
+  { id: "product", label: "Anúncio", hint: "Dados de um anúncio pelo ID do produto.", icon: Tag },
+  { id: "order", label: "Pedidos", hint: "Um ou mais pedidos pelos IDs.", icon: Package },
+  {
+    id: "transaction",
+    label: "Transações do pedido",
+    hint: "O que um pedido gerou de receita, frete e tarifas.",
+    icon: Receipt,
+  },
+  {
+    id: "statementList",
+    label: "Repasses",
+    hint: "A lista de repasses do período — é daqui que sai o ID do extrato.",
+    icon: Banknote,
+  },
+  {
+    id: "statement",
+    label: "Extrato",
+    hint: "As transações que compõem um repasse.",
+    icon: Landmark,
+  },
+  {
+    id: "unsettled",
+    label: "A liquidar",
+    hint: "Pedidos e ajustes que ainda não viraram repasse, por janela de datas.",
+    icon: Hourglass,
+  },
+];
+
+/** Rótulo, dica e ícone de um tipo de consulta. */
+export function builderTabInfo(tab: BuilderTab): (typeof BUILDER_TABS)[number] {
+  // Toda aba do tipo está na lista; o `find` só não sabe disso.
+  return BUILDER_TABS.find((t) => t.id === tab) as (typeof BUILDER_TABS)[number];
+}
 
 /**
  * Passo 1 do fluxo: informar os códigos e obter o endpoint que será
@@ -52,8 +91,8 @@ type BuilderTab =
  * nenhum, e o que define a consulta (a janela de datas) vive inteiramente
  * na query assinada.
  */
-export function EndpointBuilder() {
-  const [tab, setTab] = useState<BuilderTab>("product");
+export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
+  const activeTab = builderTabInfo(tab);
   const [productId, setProductId] = useState("");
   const [orderIds, setOrderIds] = useState("");
   const [transactionOrderId, setTransactionOrderId] = useState("");
@@ -153,57 +192,8 @@ export function EndpointBuilder() {
   const fullUrl = result.ok ? `${TIKTOK_API_HOST}${result.path}` : null;
 
   return (
-    <Card title="1. Montar endpoint para assinatura" icon={<Link2 />}>
-      <div className="tab-bar mb-3 w-full flex-wrap">
-        <button
-          type="button"
-          onClick={() => setTab("product")}
-          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "product" ? "tab-active" : ""}`}
-        >
-          <Tag className="mr-1.5 h-3.5 w-3.5" />
-          Anúncio
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("order")}
-          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "order" ? "tab-active" : ""}`}
-        >
-          <Package className="mr-1.5 h-3.5 w-3.5" />
-          Pedidos
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("transaction")}
-          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "transaction" ? "tab-active" : ""}`}
-        >
-          <Receipt className="mr-1.5 h-3.5 w-3.5" />
-          Transações
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("statementList")}
-          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "statementList" ? "tab-active" : ""}`}
-        >
-          <Banknote className="mr-1.5 h-3.5 w-3.5" />
-          Repasses
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("statement")}
-          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "statement" ? "tab-active" : ""}`}
-        >
-          <Landmark className="mr-1.5 h-3.5 w-3.5" />
-          Extrato
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("unsettled")}
-          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "unsettled" ? "tab-active" : ""}`}
-        >
-          <Hourglass className="mr-1.5 h-3.5 w-3.5" />
-          A liquidar
-        </button>
-      </div>
+    <Card title={`1. Montar endpoint — ${activeTab.label}`} icon={<Link2 />}>
+      <p className="mb-3 text-xs t-3">{activeTab.hint}</p>
 
       {tab === "product" && (
         <>
