@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* As utilidades font-sans/font-mono do Tailwind apontam para as fontes do app. */
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
 /* ─── CSS Variables ──────────────────────────────────────────
    Mesma arquitetura visual do amz_api_explorer (topbar, cards
    com ícone, badges, hero, drawer de JSON, toast), com a
@@ -280,7 +286,9 @@ html { font-size: 16px; }
 .tbl-lg { font-size: 13px; }
 .tbl-lg thead th { font-size: 11px; color: #5c5c68; }
 .tbl-lg tbody td, .tbl-lg tfoot td { padding: 12px 14px; }
-.tbl-lg td.text-right { font-family: "JetBrains Mono", monospace; font-size: 12.5px; white-space: nowrap; }
+.tbl-lg td.text-right { font-size: 12.5px; white-space: nowrap; }
+/* Como no modelo: toda coluna numérica (alinhada à direita) sai em JetBrains Mono. */
+.tbl td.text-right { font-family: "JetBrains Mono", monospace; }
 
 /* ─── Cards ──────────────────────────────────────────────── */
 .card {
