@@ -33,6 +33,7 @@ const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   order: ["ids"],
   transaction: [],
   statement: ["sort_field"],
+  statementList: ["sort_field"],
   unsettled: ["sort_field"],
   other: [],
 };
@@ -49,6 +50,14 @@ const OPTIONAL_ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   order: [],
   transaction: [],
   statement: ["page_size", "sort_order", "page_token"],
+  statementList: [
+    "page_size",
+    "sort_order",
+    "page_token",
+    "payment_status",
+    "statement_time_ge",
+    "statement_time_lt",
+  ],
   unsettled: ["page_size", "sort_order", "page_token", "search_time_ge", "search_time_lt"],
   other: [],
 };

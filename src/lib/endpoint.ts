@@ -42,6 +42,9 @@ export const STATEMENT_API_VERSION = "202501";
 /** Versão do endpoint de transações a liquidar (parte do path assinado). */
 export const UNSETTLED_API_VERSION = "202507";
 
+/** Versão do endpoint que LISTA os repasses (parte do path assinado). */
+export const STATEMENT_LIST_API_VERSION = "202309";
+
 /** Limite de IDs por chamada, conforme a documentação do Get Order Detail. */
 export const MAX_ORDER_IDS = 50;
 
@@ -50,7 +53,10 @@ export type ResourceKind =
   | "product"
   | "order"
   | "transaction"
+  /** Transações DE UM repasse (`/statements/{id}/statement_transactions`). */
   | "statement"
+  /** A LISTA de repasses (`/statements`), de onde sai o id acima. */
+  | "statementList"
   | "unsettled"
   | "other";
 
@@ -461,6 +467,120 @@ export function buildUnsettledEndpoint(options: UnsettledEndpointOptions = {}): 
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Lista de repasses — /finance/202309/statements                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `sort_field` da LISTA de repasses. Repare que é diferente do das outras
+ * duas consultas de finanças (`order_create_time`): aqui cada linha é um
+ * repasse, não um pedido, então ordena-se pela data do repasse.
+ */
+export const STATEMENT_LIST_SORT_FIELD = "statement_time";
+
+/** Faixa aceita por `page_size` (padrão da API: 20). */
+export const MIN_STATEMENT_LIST_PAGE_SIZE = 1;
+export const MAX_STATEMENT_LIST_PAGE_SIZE = 100;
+export const DEFAULT_STATEMENT_LIST_PAGE_SIZE = MAX_STATEMENT_LIST_PAGE_SIZE;
+
+/**
+ * Filtro opcional por situação do pagamento. A string vazia representa
+ * "todos" — é a ausência do parâmetro, não um valor enviado.
+ */
+export const PAYMENT_STATUSES = ["", "PAID", "PROCESSING", "FAILED"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export interface StatementListEndpointOptions {
+  pageSize?: number;
+  sortOrder?: StatementSortOrder;
+  pageToken?: string;
+  /** Início da janela de `statement_time`, em epoch (segundos). */
+  statementTimeGe?: number;
+  /** Fim da janela, EXCLUSIVO (`lt`), em epoch (segundos). */
+  statementTimeLt?: number;
+  paymentStatus?: PaymentStatus;
+}
+
+/**
+ * Monta `/finance/{versão}/statements?...`.
+ *
+ * Como as transações a liquidar, esta consulta NÃO tem código no path: é
+ * ela que responde quais repasses existem, e o `id` de cada linha da
+ * resposta é justamente o que a consulta de extrato pede no path.
+ *
+ * Parâmetros em ordem alfabética, como nas outras, para que duas
+ * montagens da mesma consulta gerem a mesma string.
+ */
+export function buildStatementListEndpoint(
+  options: StatementListEndpointOptions = {},
+): EndpointResult {
+  const {
+    pageSize = DEFAULT_STATEMENT_LIST_PAGE_SIZE,
+    sortOrder = "DESC",
+    pageToken,
+    statementTimeGe,
+    statementTimeLt,
+    paymentStatus = "",
+  } = options;
+
+  if (
+    !Number.isInteger(pageSize) ||
+    pageSize < MIN_STATEMENT_LIST_PAGE_SIZE ||
+    pageSize > MAX_STATEMENT_LIST_PAGE_SIZE
+  ) {
+    return {
+      ok: false,
+      reason: `page_size precisa ser um inteiro entre ${MIN_STATEMENT_LIST_PAGE_SIZE} e ${MAX_STATEMENT_LIST_PAGE_SIZE} (informado: ${pageSize}).`,
+    };
+  }
+
+  const token = pageToken?.trim() ?? "";
+  if (token !== "" && !PAGE_TOKEN_PATTERN.test(token)) {
+    return {
+      ok: false,
+      reason:
+        "O page_token deve ser copiado exatamente como veio em next_page_token (letras, números e + / = _ -). " +
+        "Espaços ou outros caracteres indicam que ele foi quebrado no copiar/colar.",
+    };
+  }
+
+  for (const [name, epoch] of [
+    ["statement_time_ge", statementTimeGe],
+    ["statement_time_lt", statementTimeLt],
+  ] as const) {
+    if (epoch === undefined) continue;
+    if (!Number.isInteger(epoch) || epoch <= 0) {
+      return { ok: false, reason: `${name} precisa ser um Unix timestamp em segundos.` };
+    }
+  }
+
+  if (
+    statementTimeGe !== undefined &&
+    statementTimeLt !== undefined &&
+    statementTimeGe >= statementTimeLt
+  ) {
+    return {
+      ok: false,
+      reason:
+        "O início da janela precisa ser anterior ao fim (statement_time_ge < statement_time_lt).",
+    };
+  }
+
+  // Ordem alfabética: page_size, page_token, payment_status, sort_field,
+  // sort_order, statement_time_ge, statement_time_lt.
+  const params = [`page_size=${pageSize}`];
+  if (token !== "") params.push(`page_token=${token}`);
+  if (paymentStatus !== "") params.push(`payment_status=${paymentStatus}`);
+  params.push(`sort_field=${STATEMENT_LIST_SORT_FIELD}`, `sort_order=${sortOrder}`);
+  if (statementTimeGe !== undefined) params.push(`statement_time_ge=${statementTimeGe}`);
+  if (statementTimeLt !== undefined) params.push(`statement_time_lt=${statementTimeLt}`);
+
+  return {
+    ok: true,
+    path: `/finance/${STATEMENT_LIST_API_VERSION}/statements?${params.join("&")}`,
+  };
+}
+
 /**
  * Descobre o tipo de recurso pelo path da URL assinada, para que a
  * validação e a exibição não dependam da aba selecionada — colar uma URL
@@ -477,6 +597,9 @@ export function detectResourceKind(path: string): ResourceKind {
     // path: o caminho termina em /orders/unsettled e vale para a loja
     // inteira. Testar isso antes evita confundi-lo com /orders/{id}/...
     if (/\/orders\/unsettled\/?$/.test(path)) return "unsettled";
+    // `/statements` sem nada depois é a LISTA; `/statements/{id}/...` são
+    // as transações de um repasse. Um "/" a mais separa as duas coisas.
+    if (/\/statements\/?$/.test(path)) return "statementList";
     return path.includes("/statements/") ? "statement" : "transaction";
   }
   return "other";

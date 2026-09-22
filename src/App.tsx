@@ -5,15 +5,19 @@ import { runDiagnostics } from "./lib/diagnostics";
 import {
   cleanStatementId,
   detectResourceKind,
+  PAYMENT_STATUSES,
   STATEMENT_SORT_ORDERS,
+  type PaymentStatus,
   type ResourceKind,
   type StatementSortOrder,
 } from "./lib/endpoint";
 import { parseQueryParams, signatureAgeSeconds, type NormalizedUrl } from "./lib/signedUrl";
+import { formatEpochDateBR } from "./lib/format";
 import type {
   Order,
   OrderListData,
   Product,
+  StatementListData,
   StatementTransactionsData,
   TikTokApiResponse,
   TransactionsByOrderData,
@@ -32,6 +36,10 @@ import { OrderView } from "./components/OrderView";
 import { TransactionView } from "./components/TransactionView";
 import { StatementView, type StatementPageQuery } from "./components/StatementView";
 import { UnsettledView, type UnsettledPageQuery } from "./components/UnsettledView";
+import {
+  StatementListView,
+  type StatementListPageQuery,
+} from "./components/StatementListView";
 import { RawJson } from "./components/RawJson";
 import { HistoryList } from "./components/HistoryList";
 import { Card } from "./components/ui";
@@ -48,6 +56,7 @@ export type LoadedResource =
   | { kind: "transaction"; data: TransactionsByOrderData }
   | { kind: "statement"; statement: StatementTransactionsData; query: StatementPageQuery }
   | { kind: "unsettled"; unsettled: UnsettledTransactionsData; query: UnsettledPageQuery }
+  | { kind: "statementList"; list: StatementListData; query: StatementListPageQuery }
   | { kind: "other" };
 
 export interface HistoryEntry {
@@ -123,6 +132,35 @@ function unsettledPageQuery(normalized: NormalizedUrl): UnsettledPageQuery {
   };
 }
 
+/**
+ * Lê da URL consultada os filtros da lista de repasses, para a próxima
+ * página sair com o mesmo recorte. Como nas transações a liquidar, aqui
+ * não há ID no path: o que identifica a consulta é a janela de datas.
+ */
+function statementListPageQuery(normalized: NormalizedUrl): StatementListPageQuery {
+  const params = parseQueryParams(normalized.rawQuery);
+
+  const positiveInt = (name: string): number | undefined => {
+    const value = Number(params.find((p) => p.name === name)?.value);
+    return Number.isInteger(value) && value > 0 ? value : undefined;
+  };
+
+  const sortOrder = params.find((p) => p.name === "sort_order")?.value;
+  const paymentStatus = params.find((p) => p.name === "payment_status")?.value;
+
+  return {
+    pageSize: positiveInt("page_size"),
+    sortOrder: STATEMENT_SORT_ORDERS.includes(sortOrder as StatementSortOrder)
+      ? (sortOrder as StatementSortOrder)
+      : undefined,
+    statementTimeGe: positiveInt("statement_time_ge"),
+    statementTimeLt: positiveInt("statement_time_lt"),
+    paymentStatus: PAYMENT_STATUSES.includes(paymentStatus as PaymentStatus)
+      ? (paymentStatus as PaymentStatus)
+      : undefined,
+  };
+}
+
 export default function App() {
   // O token persiste em localStorage; a URL assinada NÃO (expira em minutos).
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
@@ -195,6 +233,15 @@ export default function App() {
         resource = { kind: "statement", statement, query: statementPageQuery(normalized) };
         label = `Extrato ${statement.id ?? ""}`.trim();
         subtitle = `${count} transação(ões)${statement.total_count !== undefined ? ` de ${statement.total_count}` : ""}`;
+      } else if (kind === "statementList") {
+        const list = result.data as StatementListData;
+        const count = list.statements?.length ?? 0;
+        resource = { kind: "statementList", list, query: statementListPageQuery(normalized) };
+        label = `${count} repasse(s)`;
+        subtitle =
+          count === 0
+            ? "nenhum repasse na janela consultada"
+            : `de ${formatEpochDateBR(list.statements?.[count - 1]?.statement_time)} a ${formatEpochDateBR(list.statements?.[0]?.statement_time)}`;
       } else if (kind === "unsettled") {
         const unsettled = result.data as UnsettledTransactionsData;
         const count = unsettled.transactions?.length ?? 0;
@@ -340,6 +387,10 @@ export default function App() {
 
               {view.resource.kind === "unsettled" && (
                 <UnsettledView data={view.resource.unsettled} query={view.resource.query} />
+              )}
+
+              {view.resource.kind === "statementList" && (
+                <StatementListView data={view.resource.list} query={view.resource.query} />
               )}
 
               {view.resource.kind === "other" && (

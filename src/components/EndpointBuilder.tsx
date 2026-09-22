@@ -1,30 +1,43 @@
 import { useMemo, useState } from "react";
-import { Hourglass, Landmark, Link2, Package, Receipt, Tag } from "lucide-react";
+import { Banknote, Hourglass, Landmark, Link2, Package, Receipt, Tag } from "lucide-react";
 import {
   buildOrderEndpoint,
   buildProductEndpoint,
   buildStatementEndpoint,
+  buildStatementListEndpoint,
   buildTransactionEndpoint,
   buildUnsettledEndpoint,
   DEFAULT_STATEMENT_PAGE_SIZE,
   DEFAULT_UNSETTLED_PAGE_SIZE,
   MAX_STATEMENT_PAGE_SIZE,
   MAX_UNSETTLED_PAGE_SIZE,
+  DEFAULT_STATEMENT_LIST_PAGE_SIZE,
+  MAX_STATEMENT_LIST_PAGE_SIZE,
+  MIN_STATEMENT_LIST_PAGE_SIZE,
   MIN_STATEMENT_PAGE_SIZE,
   MIN_UNSETTLED_PAGE_SIZE,
   parseOrderIds,
   parseSearchTime,
+  PAYMENT_STATUSES,
+  STATEMENT_LIST_SORT_FIELD,
   STATEMENT_SORT_FIELD,
   STATEMENT_SORT_ORDERS,
   UNSETTLED_DEFAULT_SEARCH_START,
   UNSETTLED_SORT_FIELD,
   type EndpointResult,
+  type PaymentStatus,
   type StatementSortOrder,
 } from "../lib/endpoint";
 import { TIKTOK_API_HOST } from "../lib/signedUrl";
 import { Card, CopyButton } from "./ui";
 
-type BuilderTab = "product" | "order" | "transaction" | "statement" | "unsettled";
+type BuilderTab =
+  | "product"
+  | "order"
+  | "transaction"
+  | "statementList"
+  | "statement"
+  | "unsettled";
 
 /**
  * Passo 1 do fluxo: informar os códigos e obter o endpoint que será
@@ -53,6 +66,12 @@ export function EndpointBuilder() {
   const [unsettledPageSize, setUnsettledPageSize] = useState(String(DEFAULT_UNSETTLED_PAGE_SIZE));
   const [unsettledSortOrder, setUnsettledSortOrder] = useState<StatementSortOrder>("DESC");
   const [unsettledPageToken, setUnsettledPageToken] = useState("");
+  const [listFrom, setListFrom] = useState("");
+  const [listTo, setListTo] = useState("");
+  const [listPageSize, setListPageSize] = useState(String(DEFAULT_STATEMENT_LIST_PAGE_SIZE));
+  const [listSortOrder, setListSortOrder] = useState<StatementSortOrder>("DESC");
+  const [listPaymentStatus, setListPaymentStatus] = useState<PaymentStatus>("");
+  const [listPageToken, setListPageToken] = useState("");
 
   const productResult = useMemo(() => buildProductEndpoint(productId), [productId]);
   const orderResult = useMemo(() => buildOrderEndpoint(orderIds), [orderIds]);
@@ -95,6 +114,23 @@ export function EndpointBuilder() {
     });
   }, [unsettledFrom, unsettledTo, unsettledPageSize, unsettledSortOrder, unsettledPageToken]);
 
+  const statementListResult = useMemo((): EndpointResult => {
+    const from = parseSearchTime(listFrom, "start");
+    if (!from.ok) return from;
+    const to = parseSearchTime(listTo, "end");
+    if (!to.ok) return to;
+
+    return buildStatementListEndpoint({
+      pageSize:
+        listPageSize.trim() === "" ? DEFAULT_STATEMENT_LIST_PAGE_SIZE : Number(listPageSize),
+      sortOrder: listSortOrder,
+      pageToken: listPageToken,
+      statementTimeGe: from.epoch,
+      statementTimeLt: to.epoch,
+      paymentStatus: listPaymentStatus,
+    });
+  }, [listFrom, listTo, listPageSize, listSortOrder, listPageToken, listPaymentStatus]);
+
   /**
    * `input` decide se já vale reclamar do que foi digitado: sem nada
    * digitado, a aba não mostra erro. As transações a liquidar não têm
@@ -108,6 +144,7 @@ export function EndpointBuilder() {
     product: { result: productResult, input: productId },
     order: { result: orderResult, input: orderIds },
     transaction: { result: transactionResult, input: transactionOrderId },
+    statementList: { result: statementListResult, input: "", alwaysCheck: true },
     statement: { result: statementResult, input: statementId },
     unsettled: { result: unsettledResult, input: "", alwaysCheck: true },
   };
@@ -141,6 +178,14 @@ export function EndpointBuilder() {
         >
           <Receipt className="mr-1.5 h-3.5 w-3.5" />
           Transações
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("statementList")}
+          className={`tab-btn flex-1 justify-center whitespace-nowrap ${tab === "statementList" ? "tab-active" : ""}`}
+        >
+          <Banknote className="mr-1.5 h-3.5 w-3.5" />
+          Repasses
         </button>
         <button
           type="button"
@@ -217,6 +262,122 @@ export function EndpointBuilder() {
         </>
       )}
 
+      {tab === "statementList" && (
+        <>
+          <p className="text-xs t-3">
+            Lista os repasses da loja por período — <strong className="t-1">sem precisar de
+            código</strong>. É por aqui que se começa: o resultado traz o{" "}
+            <code>statement_id</code> de cada repasse, que é o que a aba{" "}
+            <strong className="t-1">Extrato</strong> pede.
+          </p>
+
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <label htmlFor="list-from" className="mb-1 block text-xs font-bold t-3">
+                Gerados a partir de
+              </label>
+              <input
+                id="list-from"
+                type="date"
+                value={listFrom}
+                onChange={(e) => setListFrom(e.target.value)}
+                className="inp font-mono"
+              />
+            </div>
+            <div>
+              <label htmlFor="list-to" className="mb-1 block text-xs font-bold t-3">
+                Gerados até
+              </label>
+              <input
+                id="list-to"
+                type="date"
+                value={listTo}
+                onChange={(e) => setListTo(e.target.value)}
+                className="inp font-mono"
+              />
+            </div>
+          </div>
+
+          <p className="mt-1 text-[11px] t-4">
+            As datas filtram <code>statement_time</code> (quando o repasse foi gerado) e valem pelo
+            horário local. O dia escolhido em <strong className="t-3">Gerados até</strong> entra
+            inteiro. Esta API só devolve dados a partir de 01/07/2023.
+          </p>
+
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            <div>
+              <label htmlFor="list-status" className="mb-1 block text-xs font-bold t-3">
+                payment_status
+              </label>
+              <select
+                id="list-status"
+                value={listPaymentStatus}
+                onChange={(e) => setListPaymentStatus(e.target.value as PaymentStatus)}
+                className="inp font-mono"
+              >
+                {PAYMENT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status === "" ? "(todos)" : status}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="list-page-size" className="mb-1 block text-xs font-bold t-3">
+                page_size
+              </label>
+              <input
+                id="list-page-size"
+                value={listPageSize}
+                onChange={(e) => setListPageSize(e.target.value)}
+                inputMode="numeric"
+                min={MIN_STATEMENT_LIST_PAGE_SIZE}
+                max={MAX_STATEMENT_LIST_PAGE_SIZE}
+                className="inp font-mono"
+              />
+            </div>
+            <div>
+              <label htmlFor="list-sort-order" className="mb-1 block text-xs font-bold t-3">
+                sort_order
+              </label>
+              <select
+                id="list-sort-order"
+                value={listSortOrder}
+                onChange={(e) => setListSortOrder(e.target.value as StatementSortOrder)}
+                className="inp font-mono"
+              >
+                {STATEMENT_SORT_ORDERS.map((order) => (
+                  <option key={order} value={order}>
+                    {order}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs font-bold t-3">
+              page_token (só a partir da 2ª página)
+            </summary>
+            <textarea
+              value={listPageToken}
+              onChange={(e) => setListPageToken(e.target.value)}
+              spellCheck={false}
+              rows={2}
+              aria-label="page_token dos repasses"
+              placeholder="cole aqui o next_page_token devolvido na página anterior"
+              className="inp mt-1 font-mono leading-relaxed"
+            />
+          </details>
+
+          <p className="mt-2 text-[11px] t-3">
+            <code>sort_field={STATEMENT_LIST_SORT_FIELD}</code> é obrigatório e entra sozinho —
+            repare que é diferente do das outras consultas de finanças, porque aqui cada linha é um
+            repasse, não um pedido. Exige o escopo <code>seller.finance.info</code>.
+          </p>
+        </>
+      )}
+
       {tab === "statement" && (
         <>
           <label htmlFor="statement-id" className="mb-1 block text-xs font-bold t-3">
@@ -289,6 +450,13 @@ export function EndpointBuilder() {
             <code>sort_field={STATEMENT_SORT_FIELD}</code> é obrigatório e entra sozinho — a
             documentação não aceita outro valor. Este endpoint exige o escopo{" "}
             <code>seller.finance.info</code> no app.
+          </p>
+          <p className="mt-1 text-[11px] t-4">
+            O código identifica <strong className="t-3">um</strong> repasse, e a paginação acima é
+            das <strong className="t-3">transações dentro dele</strong> — um repasse pode ter
+            milhares de pedidos, e por isso o <code>page_size</code> e a ordenação convivem com o
+            ID. Não sabe o código? A aba <strong className="t-3">Repasses</strong> lista os
+            repasses por período e devolve o ID de cada um.
           </p>
         </>
       )}
@@ -412,7 +580,7 @@ export function EndpointBuilder() {
         Envie esta URL ao sistema interno de assinatura. Ele acrescenta shop_cipher, app_key,
         timestamp e sign, e devolve a URL assinada para colar no passo 2.
         {tab === "order" && " O ids já vai na query porque é assinado junto com os demais parâmetros."}
-        {(tab === "statement" || tab === "unsettled") &&
+        {(tab === "statement" || tab === "unsettled" || tab === "statementList") &&
           " Os parâmetros da query já vão na URL porque são assinados junto com os demais."}
       </p>
     </Card>

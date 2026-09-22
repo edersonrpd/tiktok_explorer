@@ -551,3 +551,46 @@ export interface UnsettledTransactionsData {
 }
 
 export type UnsettledTransactionsResponse = TikTokApiResponse<UnsettledTransactionsData>;
+
+/* ------------------------------------------------------------------------ */
+/* Lista de repasses — GET /finance/202309/statements                        */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * ESTE É O ENDPOINT QUE RESPONDE "QUAIS REPASSES EXISTEM". Os outros dois
+ * de finanças já pedem um código que veio de algum lugar; é aqui que esse
+ * código nasce: a consulta é por JANELA DE DATAS, sem ID nenhum, e cada
+ * item traz o `id` que o Get Statement Transactions exige no path.
+ *
+ * O que vem aqui é o CABEÇALHO de cada repasse — totais e status do
+ * pagamento —, não as transações. Para abrir um repasse, use o `id` na
+ * consulta de extrato.
+ */
+
+/** Um repasse (statement): uma transferência fechada para o vendedor. */
+export interface Statement {
+  id: string;
+  /** Quando o repasse foi gerado. Unix timestamp. */
+  statement_time?: number;
+  /** PAID, PROCESSING ou FAILED. */
+  payment_status?: string;
+  /** Quando o dinheiro saiu para o vendedor. Unix timestamp. */
+  payment_time?: number;
+  payment_id?: string;
+  currency?: string;
+  /** Valor transferido. */
+  settlement_amount?: string;
+  revenue_amount?: string;
+  fee_amount?: string;
+  adjustment_amount?: string;
+  shipping_cost_amount?: string;
+  /** Vendas líquidas do período do repasse. */
+  net_sales_amount?: string;
+}
+
+export interface StatementListData {
+  next_page_token?: string;
+  statements?: Statement[];
+}
+
+export type StatementListResponse = TikTokApiResponse<StatementListData>;

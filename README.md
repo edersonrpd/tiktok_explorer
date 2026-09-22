@@ -12,6 +12,7 @@ Endpoints suportados:
 | Anúncio | `/product/202309/products/{id}` | no path |
 | Pedidos | `/order/202507/orders?ids=a,b` | na **query** (`ids`) |
 | Transações do pedido | `/finance/202501/orders/{order_id}/statement_transactions` | no path |
+| Repasses | `/finance/202309/statements?sort_field=...` | **não tem código** — só query |
 | Extrato (repasse) | `/finance/202501/statements/{id}/statement_transactions?sort_field=...` | no path, **com parâmetros na query** |
 | A liquidar | `/finance/202507/orders/unsettled?sort_field=...` | **não tem código** — só query |
 
@@ -126,6 +127,13 @@ path + query intactos.
   - *Transações*: informe o `order_id` de **um único** pedido e a
     aplicação monta `/finance/202501/orders/<id>/statement_transactions`.
     O ID vai no path, como no anúncio — sem parâmetro extra na query.
+  - *Repasses*: **não pede código** — lista os repasses da loja por
+    período e monta `/finance/202309/statements`. É por aqui que se
+    começa: o resultado traz o `statement_id` de cada repasse, que é o
+    que a aba *Extrato* exige. O `sort_field` aqui é `statement_time`, e
+    não `order_create_time`, porque cada linha é um repasse e não um
+    pedido. Aceita filtrar por `payment_status` (pago, em processamento,
+    falhou) e só devolve dados a partir de 01/07/2023.
   - *Extrato*: informe o `statement_id` e a aplicação monta
     `/finance/202501/statements/<id>/statement_transactions` já com
     `sort_field=order_create_time` (obrigatório, e o único valor aceito),
@@ -133,6 +141,10 @@ path + query intactos.
     da página seguinte. O ID fica no **meio** do caminho, então colar o
     path inteiro é lido de `/statements/<id>/`, não do último segmento.
     O endpoint exige o escopo `seller.finance.info` no app.
+
+    O `page_size` e a ordenação **convivem com o ID** porque paginam as
+    *transações dentro* do repasse — um repasse pode ter milhares de
+    pedidos. Não é a paginação dos repasses; essa é a da aba anterior.
   - *A liquidar*: não pede código nenhum — a consulta vale para a loja
     inteira e monta `/finance/202507/orders/unsettled` já com
     `sort_field=order_create_time` (obrigatório, e o único valor aceito),
@@ -151,8 +163,11 @@ path + query intactos.
   funcionando, e a validação passa a exigir `ids`. Os dois endpoints de
   `/finance/` terminam em `/statement_transactions` e se distinguem pelo
   segmento do meio: `/orders/<id>` são as transações de um pedido,
-  `/statements/<id>` são as do repasse inteiro. O terceiro,
-  `/orders/unsettled`, é o único de finanças sem ID no path.
+  `/statements/<id>` são as do repasse inteiro. Os outros dois de
+  finanças não têm ID no path e se distinguem pelo fim do caminho:
+  `/statements` é a lista de repasses e `/orders/unsettled` são as
+  transações a liquidar — um "/" a mais separa a lista de repasses das
+  transações de um deles.
 - **Validação antes de enviar**: bloqueia placeholder não substituído
   (`{product_id}`, `{statement_id}` ou outro no mesmo formato) e
   parâmetros obrigatórios ausentes (`shop_cipher`, `app_key`,
@@ -197,6 +212,15 @@ path + query intactos.
     o detalhamento de receita, frete (incluindo componentes suplementares) e
     taxas/impostos daquele SKU, escondendo os componentes zerados — só os
     valores que efetivamente impactaram o settlement aparecem.
+  - *Repasses*: a tela de **entrada** das finanças, e a resposta para
+    "de onde vem o `statement_id`?". Lista os repasses do período com
+    totais e situação do pagamento (pago, em processamento, falhou), e
+    **cada linha entrega o caminho da consulta de extrato daquele
+    repasse**, pronto para assinar — sem isso seria copiar o ID à mão,
+    voltar ao passo 1 e trocar de aba. A resposta não traz somatório
+    nenhum, então todo total exibido é soma **da página** e a tela diz
+    isso.
+
   - *Extrato*: totais do repasse (valor a pagar, total repassado, reserva)
     com a composição e a **conferência das fórmulas publicadas na
     documentação** — receita − frete − taxas/impostos − ajustes = total
@@ -391,6 +415,7 @@ src/
   lib/orders.ts          # agrupamento dos itens do pedido por SKU
   lib/money.ts           # aritmética exata sobre os valores em string da API
   lib/statements.ts      # leitura dos valores do extrato de repasse
+  lib/statementList.ts   # leitura da lista de repasses (de onde vem o statement_id)
   lib/unsettled.ts       # leitura das transações a liquidar (tudo estimado)
   lib/spreadsheet.ts     # exportação da tabela nos três formatos (colunas tipadas)
   lib/xlsx.ts            # escrita de .xlsx (ZIP + OOXML), sem dependência

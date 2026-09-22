@@ -6,6 +6,7 @@ import {
   buildUnsettledEndpoint,
   cleanProductId,
   buildStatementEndpoint,
+  buildStatementListEndpoint,
   cleanStatementId,
   detectResourceKind,
   MAX_ORDER_IDS,
@@ -329,5 +330,66 @@ describe("detectResourceKind das transações a liquidar", () => {
     expect(detectResourceKind("/finance/202501/orders/576463220456522968/statement_transactions")).toBe(
       "transaction",
     );
+  });
+});
+
+describe("buildStatementListEndpoint", () => {
+  it("monta a consulta sem filtro — é ela que não precisa de código", () => {
+    expect(buildStatementListEndpoint()).toEqual({
+      ok: true,
+      path: "/finance/202309/statements?page_size=100&sort_field=statement_time&sort_order=DESC",
+    });
+  });
+
+  it("ordena por statement_time, não por order_create_time", () => {
+    // Cada linha aqui é um repasse, não um pedido — é outro sort_field.
+    const result = buildStatementListEndpoint();
+    expect(result.ok && result.path).toContain("sort_field=statement_time");
+  });
+
+  it("inclui janela, status e token em ordem alfabética", () => {
+    const result = buildStatementListEndpoint({
+      pageSize: 20,
+      sortOrder: "ASC",
+      pageToken: "WzE3MjM1MjE1ODEyNDks",
+      paymentStatus: "PAID",
+      statementTimeGe: 1623812664,
+      statementTimeLt: 1623899064,
+    });
+    expect(result.ok && result.path).toBe(
+      "/finance/202309/statements" +
+        "?page_size=20" +
+        "&page_token=WzE3MjM1MjE1ODEyNDks" +
+        "&payment_status=PAID" +
+        "&sort_field=statement_time" +
+        "&sort_order=ASC" +
+        "&statement_time_ge=1623812664" +
+        "&statement_time_lt=1623899064",
+    );
+  });
+
+  it("omite payment_status quando é (todos)", () => {
+    // A string vazia representa ausência do parâmetro, não um valor.
+    const result = buildStatementListEndpoint({ paymentStatus: "" });
+    expect(result.ok && result.path).not.toContain("payment_status");
+  });
+
+  it("recusa janela invertida e page_size fora da faixa", () => {
+    expect(
+      buildStatementListEndpoint({ statementTimeGe: 200, statementTimeLt: 100 }).ok,
+    ).toBe(false);
+    expect(buildStatementListEndpoint({ pageSize: 101 }).ok).toBe(false);
+  });
+});
+
+describe("detectResourceKind dos dois caminhos de /statements", () => {
+  it("reconhece a LISTA de repasses, que não tem ID", () => {
+    expect(detectResourceKind("/finance/202309/statements")).toBe("statementList");
+  });
+
+  it("não confunde com as transações de um repasse", () => {
+    expect(
+      detectResourceKind("/finance/202501/statements/7238804564097517339/statement_transactions"),
+    ).toBe("statement");
   });
 });
