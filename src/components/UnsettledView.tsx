@@ -283,7 +283,7 @@ function ChecksPanel({
           )}
         </CheckLine>
         {formulas.diverging.length > 0 && (
-          <ul className="mt-1 space-y-0.5 pl-5 text-[11px] text-amber-700">
+          <ul className="check-overflow mt-1 space-y-0.5 pl-5 text-[11px] text-amber-700">
             {formulas.diverging.map(({ tx, check }) => (
               <li key={tx.id}>
                 <span className="font-mono">{tx.order_id ?? tx.adjustment_id ?? tx.id}</span>:
@@ -641,7 +641,7 @@ function TransactionRow({
         </td>
         <td className="select-all font-mono t-3">{reference ?? "—"}</td>
         <td className="t-3">{formatEpochDateBR(tx.order_create_time)}</td>
-        <td className="t-3">
+        <td className="settle-cell t-3">
           <EstimatedSettlementCell value={tx.estimated_settlement} reason={tx.unsettled_reason} />
         </td>
         <td className="text-right t-1">{formatMoney(parseMoney(tx.est_revenue_amount), currency)}</td>
@@ -701,7 +701,19 @@ function EstimatedSettlementCell({
         </span>
       )}
       {reason !== undefined && reason !== "" && (
-        <span className="block text-[10px] t-4">{reason}</span>
+        <span className="settle-reason block text-[10px] t-4">
+          {/* Quebra de linha permitida depois de cada "_", sem inserir caractere. */}
+          {reason.split("_").map((part, i) => (
+            <Fragment key={i}>
+              {i > 0 && (
+                <>
+                  _<wbr />
+                </>
+              )}
+              {part}
+            </Fragment>
+          ))}
+        </span>
       )}
     </>
   );
