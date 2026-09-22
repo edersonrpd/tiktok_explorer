@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Eye, EyeOff, KeyRound, Music2 } from "lucide-react";
+import { KeyRound, Music2, X } from "lucide-react";
 import type { HistoryEntry } from "../App";
 import { BUILDER_TABS, type BuilderTab } from "./EndpointBuilder";
 import { HistoryList } from "./HistoryList";
@@ -72,7 +71,6 @@ function TokenPanel({
   token: string;
   onTokenChange: (token: string) => void;
 }) {
-  const [show, setShow] = useState(false);
   const saved = token.trim() !== "";
 
   return (
@@ -89,7 +87,7 @@ function TokenPanel({
       <div className="flex gap-1.5">
         <input
           id="access-token"
-          type={show ? "text" : "password"}
+          type="text"
           value={token}
           onChange={(e) => onTokenChange(e.target.value)}
           spellCheck={false}
@@ -97,13 +95,16 @@ function TokenPanel({
           placeholder="ROW_..."
           className="side-inp font-mono"
         />
+        {/* Limpar também apaga o token salvo: o App grava o campo vazio no localStorage. */}
         <button
           type="button"
-          onClick={() => setShow((v) => !v)}
-          aria-label={show ? "Ocultar token" : "Mostrar token"}
+          onClick={() => onTokenChange("")}
+          disabled={!saved}
+          aria-label="Limpar token"
+          title="Limpar token"
           className="side-icon-btn"
         >
-          {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
       <p className="text-[10.5px] leading-snug side-muted">

@@ -159,7 +159,8 @@ html { font-size: 16px; }
   border-radius: var(--radius-xs); border: 1px solid rgba(255, 255, 255, .2);
   color: rgba(255, 255, 255, .8); transition: background .15s;
 }
-.side-icon-btn:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.side-icon-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .1); color: #fff; }
+.side-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
 
 .hdr-mark {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
