@@ -4,9 +4,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  FileSpreadsheet,
   Landmark,
-  Layers,
+  Search,
 } from "lucide-react";
 import type { StatementTransaction, StatementTransactionsData } from "../types/tiktok";
 import { buildStatementEndpoint, type StatementSortOrder } from "../lib/endpoint";
@@ -32,9 +31,18 @@ import {
   TRANSACTION_SUPPLEMENTARY_LABELS,
 } from "../lib/statementLabels";
 import { formatEpochBR, formatEpochDateBR } from "../lib/format";
-import { formatMoney, parseMoney } from "../lib/money";
-import { Card, CopyButton, DownloadButton } from "./ui";
-import { BreakdownBlock, FeeTaxBlock, Field, Highlight } from "./breakdown";
+import { addMoney, formatMoney, parseMoney } from "../lib/money";
+import {
+  Card,
+  CopyButton,
+  DownloadButton,
+  FilterChips,
+  HelpNote,
+  Tabs,
+  type ChipOption,
+  type TabSpec,
+} from "./ui";
+import { BreakdownBlock, CompositionBar, FeeTaxBlock, Field, Highlight } from "./breakdown";
 
 /** Parâmetros da consulta que gerou esta página, para montar a próxima. */
 export interface StatementPageQuery {
@@ -68,17 +76,52 @@ export function StatementView({
   query: StatementPageQuery;
 }) {
   const transactions = data.transactions ?? [];
+  const totals = useMemo(() => totalsByType(transactions), [transactions]);
+  const checks = useMemo(() => checkStatementFormulas(data), [data]);
+  const hasNextPage = data.next_page_token !== undefined && data.next_page_token !== "";
+
+  const tabs: TabSpec[] = [
+    {
+      id: "transactions",
+      label: "Transações",
+      badge: transactions.length,
+      content: (
+        <TransactionsPanel
+          transactions={transactions}
+          currency={data.currency}
+          statementId={data.id ?? query.statementId}
+        />
+      ),
+    },
+  ];
+  if (totals.length > 0) {
+    tabs.push({
+      id: "types",
+      label: "Totais por tipo",
+      badge: totals.length,
+      content: <TypeTotalsPanel totals={totals} currency={data.currency} />,
+    });
+  }
+  if (checks.length > 0) {
+    tabs.push({
+      id: "checks",
+      label: "Conferências",
+      badge: checks.some((c) => !c.matches) ? "atenção" : undefined,
+      badgeTone: "warn",
+      content: <ChecksPanel checks={checks} currency={data.currency} />,
+    });
+  }
+  tabs.push({
+    id: "pagination",
+    label: "Paginação",
+    badge: hasNextPage ? "há mais" : "última",
+    content: <NextPagePanel data={data} query={query} />,
+  });
 
   return (
     <>
       <StatementSummary data={data} transactions={transactions} />
-      <NextPageCard data={data} query={query} />
-      <TypeTotalsCard transactions={transactions} currency={data.currency} />
-      <TransactionsCard
-        transactions={transactions}
-        currency={data.currency}
-        statementId={data.id ?? query.statementId}
-      />
+      <Tabs label="Seções do extrato" tabs={tabs} />
     </>
   );
 }
@@ -91,7 +134,6 @@ function StatementSummary({
   transactions: StatementTransaction[];
 }) {
   const currency = data.currency;
-  const checks = useMemo(() => checkStatementFormulas(data), [data]);
   const breakdown = data.total_settlement_breakdown;
 
   return (
@@ -128,49 +170,79 @@ function StatementSummary({
       </dl>
 
       {breakdown !== undefined && (
-        <div className="mt-4">
-          <h3 className="mb-1.5 text-xs font-bold t-2">Composição do total repassado</h3>
-          <dl className="space-y-0.5 text-xs">
-            {Object.entries(STATEMENT_TOTAL_LABELS).map(([field, label]) => (
-              <div key={field} className="flex justify-between gap-2">
-                <dt className="t-4">{label}</dt>
-                <dd className="font-medium t-1">
-                  {formatMoney(parseMoney(breakdown[field as keyof typeof breakdown]), currency)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
+        <CompositionBar
+          title="Composição do total repassado"
+          note="extrato inteiro"
+          currency={currency}
+          segments={[
+            {
+              label: "Repasse",
+              value: parseMoney(data.total_settlement_amount),
+              tone: "ink",
+            },
+            {
+              label: STATEMENT_TOTAL_LABELS.total_shipping_cost_amount ?? "Custo de frete",
+              value: parseMoney(breakdown.total_shipping_cost_amount),
+              tone: "accent",
+            },
+            {
+              label: STATEMENT_TOTAL_LABELS.total_fee_tax_amount ?? "Taxas e impostos",
+              value: parseMoney(breakdown.total_fee_tax_amount),
+              tone: "amber",
+            },
+            {
+              label: STATEMENT_TOTAL_LABELS.total_adjustment_amount ?? "Ajustes",
+              value: parseMoney(breakdown.total_adjustment_amount),
+              tone: "gray",
+            },
+          ]}
+        />
       )}
-
-      {checks.length > 0 && (
-        <div className="mt-4">
-          <h3 className="mb-1.5 text-xs font-bold t-2">Conferência das fórmulas da documentação</h3>
-          <ul className="space-y-1 text-xs">
-            {checks.map((check) => (
-              <li key={check.label} className="flex items-start gap-1.5">
-                {check.matches ? (
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                ) : (
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-                )}
-                <span className={check.matches ? "t-3" : "t-2"}>
-                  {check.label}
-                  {!check.matches && (
-                    <span className="text-amber-700">
-                      {" "}
-                      — calculado {formatMoney(check.expected, currency)}, retornado{" "}
-                      {formatMoney(check.returned, currency)}. Confira o JSON bruto antes de lançar
-                      o valor.
-                    </span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {breakdown !== undefined && (
+        <p className="mt-1.5 text-[11px] t-4">
+          Receita do extrato:{" "}
+          <strong className="t-2">
+            {formatMoney(parseMoney(breakdown.total_revenue_amount), currency)}
+          </strong>
+        </p>
       )}
     </Card>
+  );
+}
+
+function ChecksPanel({
+  checks,
+  currency,
+}: {
+  checks: ReturnType<typeof checkStatementFormulas>;
+  currency: string | undefined;
+}) {
+  return (
+    <div>
+      <h3 className="mb-1.5 text-xs font-bold t-2">Conferência das fórmulas da documentação</h3>
+      <ul className="space-y-1 text-xs">
+        {checks.map((check) => (
+          <li key={check.label} className="flex items-start gap-1.5">
+            {check.matches ? (
+              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+            ) : (
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+            )}
+            <span className={check.matches ? "t-3" : "t-2"}>
+              {check.label}
+              {!check.matches && (
+                <span className="text-amber-700">
+                  {" "}
+                  — calculado {formatMoney(check.expected, currency)}, retornado{" "}
+                  {formatMoney(check.returned, currency)}. Confira o JSON bruto antes de lançar o
+                  valor.
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -183,7 +255,7 @@ function StatementSummary({
  * entregar o caminho da próxima página pronto para assinar, já com o
  * mesmo page_size e sort_order desta consulta.
  */
-function NextPageCard({
+function NextPagePanel({
   data,
   query,
 }: {
@@ -207,16 +279,14 @@ function NextPageCard({
 
   if (token === undefined || token === "") {
     return (
-      <Card title="Paginação" icon={<Layers />}>
-        <p className="text-xs t-3">
-          A resposta não trouxe <code>next_page_token</code> — esta é a última página do extrato.
-        </p>
-      </Card>
+      <p className="text-xs t-3">
+        A resposta não trouxe <code>next_page_token</code> — esta é a última página do extrato.
+      </p>
     );
   }
 
   return (
-    <Card title="Próxima página" icon={<Layers />}>
+    <div>
       <p className="text-xs t-3">
         Ainda há transações. O <code>page_token</code> faz parte da query e é assinado junto, então
         a próxima página exige uma <strong className="t-1">nova assinatura</strong> — não é possível
@@ -240,22 +310,19 @@ function NextPageCard({
           <CopyButton text={token} label="Copiar token" />
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
-function TypeTotalsCard({
-  transactions,
+function TypeTotalsPanel({
+  totals,
   currency,
 }: {
-  transactions: StatementTransaction[];
+  totals: ReturnType<typeof totalsByType>;
   currency: string | undefined;
 }) {
-  const totals = useMemo(() => totalsByType(transactions), [transactions]);
-  if (totals.length === 0) return null;
-
   return (
-    <Card title="Totais por tipo de transação" icon={<Layers />} count={totals.length}>
+    <div>
       <div className="overflow-x-auto">
         <table className="tbl text-xs">
           <thead>
@@ -286,11 +353,11 @@ function TypeTotalsCard({
         </table>
       </div>
       <p className="mt-2 text-[11px] t-4">Somas desta página, não do extrato inteiro.</p>
-    </Card>
+    </div>
   );
 }
 
-function TransactionsCard({
+function TransactionsPanel({
   transactions,
   currency,
   statementId,
@@ -299,62 +366,151 @@ function TransactionsCard({
   currency: string | undefined;
   statementId: string;
 }) {
+  const [filter, setFilter] = useState("");
+  const [chip, setChip] = useState("all");
+
+  const chips = useMemo((): ChipOption[] => {
+    const byType = new Map<string, number>();
+    for (const tx of transactions) {
+      const type = tx.type ?? "";
+      byType.set(type, (byType.get(type) ?? 0) + 1);
+    }
+    const options: ChipOption[] = [{ id: "all", label: "Todas", count: transactions.length }];
+    if (byType.size > 1) {
+      for (const [type, count] of byType) options.push({ id: type, label: labelForType(type), count });
+    }
+    return options;
+  }, [transactions]);
+
+  const visible = useMemo(() => {
+    // Mesma regra da busca das transações a liquidar: vários termos
+    // separados por espaço/vírgula, basta um casar.
+    const terms = filter
+      .toLowerCase()
+      .split(/[\s,;]+/)
+      .filter((term) => term !== "");
+    return transactions.filter((tx) => {
+      if (chip !== "all" && (tx.type ?? "") !== chip) return false;
+      if (terms.length === 0) return true;
+      const haystack = [
+        tx.id,
+        tx.order_id,
+        tx.adjustment_id,
+        tx.adjustment_order_id,
+        tx.associated_order_id,
+        tx.type,
+      ]
+        .filter((value): value is string => value !== undefined && value !== "")
+        .join(" ")
+        .toLowerCase();
+      return terms.some((term) => haystack.includes(term));
+    });
+  }, [transactions, filter, chip]);
+
+  const sums = useMemo(() => {
+    const sum = (pick: (tx: StatementTransaction) => string | undefined) =>
+      addMoney(...visible.map((tx) => parseMoney(pick(tx))));
+    return {
+      revenue: sum((tx) => tx.revenue_amount),
+      shipping: sum((tx) => tx.shipping_cost_amount),
+      feeTax: sum((tx) => tx.fee_tax_amount),
+      settlement: sum((tx) => tx.settlement_amount),
+    };
+  }, [visible]);
+  const filtering = filter.trim() !== "" || chip !== "all";
+
   if (transactions.length === 0) {
-    return (
-      <Card title="Transações" icon={<FileSpreadsheet />}>
-        <p className="text-xs t-4">A resposta não trouxe nenhuma transação.</p>
-      </Card>
-    );
+    return <p className="text-xs t-4">A resposta não trouxe nenhuma transação.</p>;
   }
 
   return (
-    <Card
-      title="Transações"
-      icon={<FileSpreadsheet />}
-      count={transactions.length}
-      actions={
+    <div>
+      <div className="panel-toolbar">
+        <div className="search-field">
+          <Search className="h-3.5 w-3.5" aria-hidden="true" />
+          <input
+            aria-label="Procurar pedido nesta página do extrato"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            spellCheck={false}
+            placeholder="Procurar pedido — um ou vários, separados por vírgula"
+            className="inp font-mono"
+          />
+        </div>
+        {/* Exporta o que está na tela, como nas transações a liquidar. */}
         <div className="flex items-center gap-2">
           <DownloadButton
-            build={() => transactionsXlsx(transactions)}
+            build={() => transactionsXlsx(visible)}
             filename={statementFileName(statementId, "xlsx")}
             mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             label="Excel"
           />
           <DownloadButton
-            build={() => transactionsCsv(transactions)}
+            build={() => transactionsCsv(visible)}
             filename={statementFileName(statementId, "csv")}
             label="CSV"
           />
-          <CopyButton text={transactionsTsv(transactions)} label="Copiar" />
+          <CopyButton text={transactionsTsv(visible)} label="Copiar" />
         </div>
-      }
-    >
-      <div className="overflow-x-auto">
-        <table className="tbl text-xs">
-          <thead>
-            <tr>
-              <th />
-              <th>Tipo</th>
-              <th>Pedido / ajuste</th>
-              <th>Data do pedido</th>
-              <th className="text-right">Receita</th>
-              <th className="text-right">Frete</th>
-              <th className="text-right">Taxas/impostos</th>
-              <th className="text-right">Repasse</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.map((tx) => (
-              <TransactionRow key={tx.id} tx={tx} currency={currency} />
-            ))}
-          </tbody>
-        </table>
       </div>
-      <p className="mt-2 text-[11px] t-4">
-        Valores negativos são custos descontados do repasse. Abra uma linha para ver o detalhamento
-        — só os campos diferentes de zero aparecem.
-      </p>
-    </Card>
+
+      {chips.length > 1 && (
+        <div className="mb-3">
+          <FilterChips label="Filtrar transações" options={chips} value={chip} onChange={setChip} />
+        </div>
+      )}
+
+      {filtering && (
+        <p className="mb-2 text-[11px] t-3">
+          {visible.length} de {transactions.length} transação(ões) desta página — a exportação leva
+          só estas.
+        </p>
+      )}
+
+      {visible.length === 0 ? (
+        <p className="alert mt-1 px-3 py-2 text-xs t-2">
+          Nenhuma transação desta página casa com a busca.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="tbl text-xs">
+            <thead>
+              <tr>
+                <th />
+                <th>Tipo</th>
+                <th>Pedido / ajuste</th>
+                <th>Data do pedido</th>
+                <th className="text-right">Receita</th>
+                <th className="text-right">Frete</th>
+                <th className="text-right">Taxas/impostos</th>
+                <th className="text-right">Repasse</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((tx) => (
+                <TransactionRow key={tx.id} tx={tx} currency={currency} />
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={4}>{filtering ? "Total do filtro" : "Total desta página"}</td>
+                <td className="text-right">{formatMoney(sums.revenue, currency)}</td>
+                <td className="text-right">{formatMoney(sums.shipping, currency)}</td>
+                <td className="text-right">{formatMoney(sums.feeTax, currency)}</td>
+                <td className="text-right">{formatMoney(sums.settlement, currency)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      <HelpNote>
+        <p>
+          Valores negativos são custos descontados do repasse. Abra uma linha para ver o
+          detalhamento — só os campos diferentes de zero aparecem.
+        </p>
+      </HelpNote>
+    </div>
   );
 }
 

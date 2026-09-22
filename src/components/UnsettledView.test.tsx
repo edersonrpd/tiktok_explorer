@@ -79,7 +79,7 @@ describe("UnsettledView", () => {
   const html = renderToStaticMarkup(<UnsettledView data={SAMPLE} query={QUERY} />);
 
   it("mostra os somatórios do cabeçalho", () => {
-    expect(html).toContain("Transações a liquidar");
+    expect(html).toContain("Repasse estimado");
     expect(html).toContain(money("100")); // sum_est_settlement_amount
     expect(html).toContain(money("-10")); // sum_est_fee_amount
   });

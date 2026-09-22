@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Check, Copy, Download } from "lucide-react";
 
 /** Cartão padrão do layout. */
@@ -98,5 +98,108 @@ export function DownloadButton({
       <Download className="h-3 w-3" />
       {label}
     </button>
+  );
+}
+
+export interface TabSpec {
+  id: string;
+  label: string;
+  /** Contagem ou selo ao lado do rótulo. */
+  badge?: ReactNode;
+  /** `warn` pinta o selo de âmbar — para quando a aba esconde um problema. */
+  badgeTone?: "warn";
+  content: ReactNode;
+}
+
+/**
+ * Cartão com abas. Os painéis inativos ficam só ESCONDIDOS (`hidden`), não
+ * desmontados: a busca digitada e as linhas abertas sobrevivem à troca de
+ * aba, e o HTML estático continua trazendo tudo (é o que os testes leem).
+ */
+export function Tabs({ tabs, label }: { tabs: TabSpec[]; label: string }) {
+  const [active, setActive] = useState(tabs[0]?.id ?? "");
+  const idBase = useId();
+
+  return (
+    <section className="card overflow-hidden">
+      <div role="tablist" aria-label={label} className="tabs-bar">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            id={`${idBase}-tab-${tab.id}`}
+            aria-selected={active === tab.id}
+            aria-controls={`${idBase}-panel-${tab.id}`}
+            onClick={() => setActive(tab.id)}
+            className={`tabs-btn ${active === tab.id ? "tabs-active" : ""}`}
+          >
+            {tab.label}
+            {tab.badge !== undefined && (
+              <span className={`tabs-badge ${tab.badgeTone === "warn" ? "tabs-badge-warn" : ""}`}>
+                {tab.badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      {tabs.map((tab) => (
+        <div
+          key={tab.id}
+          role="tabpanel"
+          id={`${idBase}-panel-${tab.id}`}
+          aria-labelledby={`${idBase}-tab-${tab.id}`}
+          hidden={active !== tab.id}
+          className="card-bd"
+        >
+          {tab.content}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+export interface ChipOption {
+  id: string;
+  label: string;
+  count: number;
+}
+
+/** Filtros rápidos em pílulas — um selecionado por vez. */
+export function FilterChips({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: ChipOption[];
+  value: string;
+  onChange: (id: string) => void;
+  label: string;
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1.5">
+      {options.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          aria-pressed={value === option.id}
+          onClick={() => onChange(option.id)}
+          className={`filter-chip ${value === option.id ? "filter-chip-on" : ""}`}
+        >
+          {option.label} · {option.count}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Texto de apoio recolhido: fica a um clique, sem ocupar a tela. */
+export function HelpNote({ title = "Como ler estes valores", children }: { title?: string; children: ReactNode }) {
+  return (
+    <details className="help-note">
+      <summary>{title}</summary>
+      <div className="help-body">{children}</div>
+    </details>
   );
 }

@@ -203,3 +203,60 @@ export function FeeTaxBlock({
     </div>
   );
 }
+
+export interface CompositionSegment {
+  label: string;
+  value: Money | undefined;
+  tone: "ink" | "accent" | "amber" | "gray";
+}
+
+/**
+ * Para onde vai a receita: uma barra com o repasse e cada custo na
+ * proporção do seu valor absoluto. É leitura rápida, não conferência — os
+ * números exatos ficam na legenda e nas abas abaixo.
+ */
+export function CompositionBar({
+  title,
+  segments,
+  currency,
+  note,
+}: {
+  title: string;
+  segments: CompositionSegment[];
+  currency: string | undefined;
+  note?: string;
+}) {
+  const total = segments.reduce((sum, s) => sum + Math.abs(s.value ?? 0), 0);
+  if (total === 0) return null;
+
+  return (
+    <div className="composition">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-xs font-bold t-2">{title}</h3>
+        {note !== undefined && <span className="text-[11px] t-4">{note}</span>}
+      </div>
+      <div className="composition-bar" aria-hidden="true">
+        {segments.map((s) =>
+          Math.abs(s.value ?? 0) === 0 ? null : (
+            <span
+              key={s.label}
+              className={`seg-${s.tone}`}
+              style={{ width: `${(Math.abs(s.value ?? 0) / total) * 100}%` }}
+            />
+          ),
+        )}
+      </div>
+      <dl className="composition-legend">
+        {segments.map((s) => (
+          <div key={s.label}>
+            <dt>
+              <span className={`swatch seg-${s.tone}`} />
+              {s.label}
+            </dt>
+            <dd className="font-mono">{formatMoney(s.value, currency)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}

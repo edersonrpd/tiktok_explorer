@@ -5,9 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  FileSpreadsheet,
   Hourglass,
-  Layers,
   Search,
 } from "lucide-react";
 import type { UnsettledTransaction, UnsettledTransactionsData } from "../types/tiktok";
@@ -39,8 +37,17 @@ import {
 } from "../lib/statementLabels";
 import { formatEpochBR, formatEpochDateBR } from "../lib/format";
 import { formatMoney, parseMoney } from "../lib/money";
-import { Card, CopyButton, DownloadButton } from "./ui";
-import { BreakdownBlock, FeeTaxBlock, Field, Highlight } from "./breakdown";
+import {
+  Card,
+  CopyButton,
+  DownloadButton,
+  FilterChips,
+  HelpNote,
+  Tabs,
+  type ChipOption,
+  type TabSpec,
+} from "./ui";
+import { BreakdownBlock, CompositionBar, FeeTaxBlock, Field, Highlight } from "./breakdown";
 
 /**
  * Parâmetros da consulta que gerou esta página, para montar a próxima.
@@ -86,13 +93,48 @@ export function UnsettledView({
   // A moeda vem por transação neste endpoint; os somatórios do cabeçalho
   // não têm moeda nenhuma para se apoiar.
   const currency = useMemo(() => singleCurrency(transactions), [transactions]);
+  const totals = useMemo(() => unsettledTotalsByType(transactions), [transactions]);
+  const formulas = useMemo(() => summarizeFormulas(transactions), [transactions]);
+  const hasNextPage = data.next_page_token !== undefined && data.next_page_token !== "";
+
+  const tabs: TabSpec[] = [
+    {
+      id: "transactions",
+      label: "Transações",
+      badge: transactions.length,
+      content: <TransactionsPanel transactions={transactions} currency={currency} />,
+    },
+  ];
+  if (totals.length > 0) {
+    tabs.push({
+      id: "types",
+      label: "Totais por tipo",
+      badge: totals.length,
+      content: <TypeTotalsPanel totals={totals} currency={currency} />,
+    });
+  }
+  tabs.push(
+    {
+      id: "checks",
+      label: "Conferências",
+      badge: formulas.diverging.length > 0 ? "atenção" : undefined,
+      badgeTone: "warn",
+      content: (
+        <ChecksPanel data={data} transactions={transactions} currency={currency} formulas={formulas} />
+      ),
+    },
+    {
+      id: "pagination",
+      label: "Paginação",
+      badge: hasNextPage ? "há mais" : "última",
+      content: <NextPagePanel data={data} query={query} />,
+    },
+  );
 
   return (
     <>
       <UnsettledSummary data={data} transactions={transactions} currency={currency} />
-      <NextPageCard data={data} query={query} />
-      <TypeTotalsCard transactions={transactions} currency={currency} />
-      <TransactionsCard transactions={transactions} currency={currency} />
+      <Tabs label="Seções das transações a liquidar" tabs={tabs} />
     </>
   );
 }
@@ -107,22 +149,17 @@ function UnsettledSummary({
   currency: string | undefined;
 }) {
   const sums = useMemo(() => pageSums(transactions), [transactions]);
-  const formulas = useMemo(() => summarizeFormulas(transactions), [transactions]);
-  const comparable = canCompareSums(data, transactions);
-  const sumChecks = useMemo(
-    () => (comparable ? checkSums(data, transactions) : []),
-    [comparable, data, transactions],
-  );
   const mixedCurrency = currency === undefined && transactions.length > 0;
+  const shipping = sums.shipping;
 
   return (
     <Card
-      title="Transações a liquidar"
+      title="Resumo"
       icon={<Hourglass />}
       count={data.total_count}
       actions={<span className="badge gray">UNSETTLED</span>}
     >
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Highlight
           label="Repasse estimado"
           value={formatMoney(parseMoney(data.sum_est_settlement_amount), currency)}
@@ -146,7 +183,7 @@ function UnsettledSummary({
         Os quatro somatórios acima são do <strong className="t-2">conjunto filtrado inteiro</strong>,
         não desta página. A resposta não traz somatório de frete — o valor estimado de frete só
         pode ser somado das transações exibidas:{" "}
-        <strong className="t-2">{formatMoney(sums.shipping, currency)}</strong> nesta página.
+        <strong className="t-2">{formatMoney(shipping, currency)}</strong> nesta página.
       </p>
 
       <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-4">
@@ -162,14 +199,48 @@ function UnsettledSummary({
         />
       </dl>
 
-      {mixedCurrency && (
+      {mixedCurrency ? (
         <p className="alert alert-error mt-2 px-3 py-2 text-xs t-2">
           As transações desta página estão em moedas diferentes. Os valores aparecem sem símbolo, e
           somar linhas de moedas distintas não produz um total válido.
         </p>
+      ) : (
+        <CompositionBar
+          title="Para onde vai a receita"
+          note="somas desta página"
+          currency={currency}
+          segments={[
+            { label: "Repasse", value: sums.settlement, tone: "ink" },
+            { label: "Frete", value: sums.shipping, tone: "accent" },
+            { label: "Taxas e impostos", value: sums.feeTax, tone: "amber" },
+            { label: "Ajustes", value: sums.adjustment, tone: "gray" },
+          ]}
+        />
       )}
+    </Card>
+  );
+}
 
-      <div className="mt-4">
+function ChecksPanel({
+  data,
+  transactions,
+  currency,
+  formulas,
+}: {
+  data: UnsettledTransactionsData;
+  transactions: UnsettledTransaction[];
+  currency: string | undefined;
+  formulas: ReturnType<typeof summarizeFormulas>;
+}) {
+  const comparable = canCompareSums(data, transactions);
+  const sumChecks = useMemo(
+    () => (comparable ? checkSums(data, transactions) : []),
+    [comparable, data, transactions],
+  );
+
+  return (
+    <div className="space-y-4">
+      <div>
         <h3 className="mb-1.5 text-xs font-bold t-2">Conferência da fórmula da documentação</h3>
         <CheckLine
           ok={formulas.checked > 0 && formulas.diverging.length === 0}
@@ -202,7 +273,7 @@ function UnsettledSummary({
         )}
       </div>
 
-      <div className="mt-4">
+      <div>
         <h3 className="mb-1.5 text-xs font-bold t-2">
           Somatórios do cabeçalho × soma das transações
         </h3>
@@ -232,7 +303,7 @@ function UnsettledSummary({
           </p>
         )}
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -268,7 +339,7 @@ function CheckLine({
  * segunda página traria um recorte diferente do da primeira e os totais
  * deixariam de fazer sentido entre si.
  */
-function NextPageCard({
+function NextPagePanel({
   data,
   query,
 }: {
@@ -291,16 +362,14 @@ function NextPageCard({
 
   if (token === undefined || token === "") {
     return (
-      <Card title="Paginação" icon={<Layers />}>
-        <p className="text-xs t-3">
-          A resposta não trouxe <code>next_page_token</code> — esta é a última página do resultado.
-        </p>
-      </Card>
+      <p className="text-xs t-3">
+        A resposta não trouxe <code>next_page_token</code> — esta é a última página do resultado.
+      </p>
     );
   }
 
   return (
-    <Card title="Próxima página" icon={<Layers />}>
+    <div>
       <p className="text-xs t-3">
         Ainda há transações pendentes. O <code>page_token</code> faz parte da query e é assinado
         junto, então a próxima página exige uma <strong className="t-1">nova assinatura</strong> —
@@ -323,22 +392,19 @@ function NextPageCard({
           <CopyButton text={token} label="Copiar token" />
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
-function TypeTotalsCard({
-  transactions,
+function TypeTotalsPanel({
+  totals,
   currency,
 }: {
-  transactions: UnsettledTransaction[];
+  totals: ReturnType<typeof unsettledTotalsByType>;
   currency: string | undefined;
 }) {
-  const totals = useMemo(() => unsettledTotalsByType(transactions), [transactions]);
-  if (totals.length === 0) return null;
-
   return (
-    <Card title="Totais por tipo de transação" icon={<Layers />} count={totals.length}>
+    <div>
       <div className="overflow-x-auto">
         <table className="tbl text-xs">
           <thead>
@@ -369,11 +435,14 @@ function TypeTotalsCard({
         </table>
       </div>
       <p className="mt-2 text-[11px] t-4">Somas desta página, não do conjunto inteiro.</p>
-    </Card>
+    </div>
   );
 }
 
-function TransactionsCard({
+/** Filtro rápido que não é um tipo de transação. */
+const PENDING_DELIVERY = "__pending";
+
+function TransactionsPanel({
   transactions,
   currency,
 }: {
@@ -381,28 +450,59 @@ function TransactionsCard({
   currency: string | undefined;
 }) {
   const [filter, setFilter] = useState("");
-  const visible = useMemo(() => filterTransactions(transactions, filter), [transactions, filter]);
-  const filtering = filter.trim() !== "";
+  const [chip, setChip] = useState("all");
+
+  const chips = useMemo((): ChipOption[] => {
+    const byType = new Map<string, number>();
+    for (const tx of transactions) {
+      const type = tx.type ?? "";
+      byType.set(type, (byType.get(type) ?? 0) + 1);
+    }
+    const options: ChipOption[] = [{ id: "all", label: "Todas", count: transactions.length }];
+    // Só vale a pena filtrar por tipo quando há mais de um.
+    if (byType.size > 1) {
+      for (const [type, count] of byType) options.push({ id: type, label: labelForType(type), count });
+    }
+    const pending = transactions.filter((tx) => !isDelivered(tx)).length;
+    if (pending > 0 && pending < transactions.length) {
+      options.push({ id: PENDING_DELIVERY, label: "Aguardando entrega", count: pending });
+    }
+    return options;
+  }, [transactions]);
+
+  const visible = useMemo(() => {
+    const searched = filterTransactions(transactions, filter);
+    if (chip === "all") return searched;
+    if (chip === PENDING_DELIVERY) return searched.filter((tx) => !isDelivered(tx));
+    return searched.filter((tx) => (tx.type ?? "") === chip);
+  }, [transactions, filter, chip]);
+  const sums = useMemo(() => pageSums(visible), [visible]);
+  const filtering = filter.trim() !== "" || chip !== "all";
 
   if (transactions.length === 0) {
     return (
-      <Card title="Transações a liquidar" icon={<FileSpreadsheet />}>
-        <p className="text-xs t-4">
-          A resposta não trouxe nenhuma transação — nada pendente de liquidação na janela
-          consultada.
-        </p>
-      </Card>
+      <p className="text-xs t-4">
+        A resposta não trouxe nenhuma transação — nada pendente de liquidação na janela consultada.
+      </p>
     );
   }
 
   return (
-    <Card
-      title="Transações a liquidar"
-      icon={<FileSpreadsheet />}
-      count={visible.length}
-      // Exporta o que está na tela: filtrou para conferir 3 pedidos, são
-      // esses 3 que vão para a planilha.
-      actions={
+    <div>
+      <div className="panel-toolbar">
+        <div className="search-field">
+          <Search className="h-3.5 w-3.5" aria-hidden="true" />
+          <input
+            id="unsettled-filter"
+            aria-label="Procurar pedido nesta página"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            spellCheck={false}
+            placeholder="Procurar pedido — um ou vários, separados por vírgula"
+            className="inp font-mono"
+          />
+        </div>
+        {/* Exporta o que está na tela: filtrou para conferir 3 pedidos, são esses 3 que vão para a planilha. */}
         <div className="flex items-center gap-2">
           <DownloadButton
             build={() => unsettledXlsx(visible)}
@@ -417,33 +517,18 @@ function TransactionsCard({
           />
           <CopyButton text={unsettledTsv(visible)} label="Copiar" />
         </div>
-      }
-    >
-      <label htmlFor="unsettled-filter" className="mb-1 block text-xs font-bold t-3">
-        Procurar pedido nesta página
-      </label>
-      <div className="mb-1 flex items-center gap-2">
-        <Search className="h-3.5 w-3.5 shrink-0 t-4" />
-        <input
-          id="unsettled-filter"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          spellCheck={false}
-          placeholder="576463220456522968 — ou vários, separados por vírgula/espaço"
-          className="inp font-mono"
-        />
       </div>
-      <p className="mb-3 text-[11px] t-4">
-        A busca é <strong className="t-3">local</strong>, nas transações já carregadas: o endpoint
-        não aceita filtro por pedido, só a janela de datas. Se o pedido não aparecer, ou ele está
-        fora da janela consultada (ajuste as datas no passo 1 para a data de criação dele) ou já
-        foi liquidado — e aí ele sai desta consulta e passa a estar na aba{" "}
-        <strong className="t-3">Transações</strong>.
-      </p>
+
+      {chips.length > 1 && (
+        <div className="mb-3">
+          <FilterChips label="Filtrar transações" options={chips} value={chip} onChange={setChip} />
+        </div>
+      )}
 
       {filtering && (
         <p className="mb-2 text-[11px] t-3">
-          {visible.length} de {transactions.length} transação(ões) desta página.
+          {visible.length} de {transactions.length} transação(ões) desta página — a exportação leva
+          só estas.
         </p>
       )}
 
@@ -452,36 +537,54 @@ function TransactionsCard({
           Nenhuma transação desta página casa com a busca.
         </p>
       ) : (
-      <div className="overflow-x-auto">
-        <table className="tbl text-xs">
-          <thead>
-            <tr>
-              <th />
-              <th>Tipo</th>
-              <th>Pedido / ajuste</th>
-              <th>Criado em</th>
-              <th>Liquidação prevista</th>
-              <th className="text-right">Receita</th>
-              <th className="text-right">Frete</th>
-              <th className="text-right">Taxas/impostos</th>
-              <th className="text-right">Repasse</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((tx) => (
-              <TransactionRow key={tx.id} tx={tx} currency={currency} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+        <div className="overflow-x-auto">
+          <table className="tbl text-xs">
+            <thead>
+              <tr>
+                <th />
+                <th>Tipo</th>
+                <th>Pedido / ajuste</th>
+                <th>Criado em</th>
+                <th>Liquidação prevista</th>
+                <th className="text-right">Receita</th>
+                <th className="text-right">Frete</th>
+                <th className="text-right">Taxas/impostos</th>
+                <th className="text-right">Repasse</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((tx) => (
+                <TransactionRow key={tx.id} tx={tx} currency={currency} />
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={5}>{filtering ? "Total do filtro" : "Total desta página"}</td>
+                <td className="text-right">{formatMoney(sums.revenue, currency)}</td>
+                <td className="text-right">{formatMoney(sums.shipping, currency)}</td>
+                <td className="text-right">{formatMoney(sums.feeTax, currency)}</td>
+                <td className="text-right">{formatMoney(sums.settlement, currency)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       )}
-      <p className="mt-2 text-[11px] t-4">
-        Valores negativos são custos que serão descontados do repasse. Enquanto o pedido não é
-        entregue, o frete estimado está incompleto e a liquidação aparece como política
-        (&ldquo;x days after delivery&rdquo;) em vez de data. Abra uma linha para ver o
-        detalhamento — só os campos diferentes de zero aparecem.
-      </p>
-    </Card>
+
+      <HelpNote>
+        <p>
+          Valores negativos são custos que serão descontados do repasse. Enquanto o pedido não é
+          entregue, o frete estimado está incompleto e a liquidação aparece como política
+          (&ldquo;x days after delivery&rdquo;) em vez de data. Abra uma linha para ver o
+          detalhamento — só os campos diferentes de zero aparecem.
+        </p>
+        <p>
+          A busca é <strong>local</strong>, nas transações já carregadas: o endpoint não aceita
+          filtro por pedido, só a janela de datas. Se o pedido não aparecer, ou ele está fora da
+          janela consultada (ajuste as datas no passo 1 para a data de criação dele) ou já foi
+          liquidado — e aí ele sai desta consulta e passa a aparecer no <strong>Extrato</strong>.
+        </p>
+      </HelpNote>
+    </div>
   );
 }
 
