@@ -1,10 +1,11 @@
 import { Layers } from "lucide-react";
 import type { Sku } from "../types/tiktok";
 import { formatPrice } from "../lib/format";
-import { Card, CopyButton } from "./ui";
+import { skusCsv, skusFileName, skusTsv, skusXlsx } from "../lib/skus";
+import { Card, CopyButton, DownloadButton } from "./ui";
 
 /** Tabela de variações — a visão mais importante para o de-para com o ERP. */
-export function SkuTable({ skus }: { skus: Sku[] }) {
+export function SkuTable({ skus, productId }: { skus: Sku[]; productId?: string }) {
   if (skus.length === 0) {
     return (
       <Card title="Variações" icon={<Layers />}>
@@ -20,7 +21,23 @@ export function SkuTable({ skus }: { skus: Sku[] }) {
       title="Variações"
       icon={<Layers />}
       count={skus.length}
-      actions={<CopyButton text={sellerSkuColumn} label="Copiar coluna seller_sku" />}
+      actions={
+        <div className="flex items-center gap-2">
+          <CopyButton text={sellerSkuColumn} label="Copiar seller_sku" />
+          <CopyButton text={skusTsv(skus)} label="Copiar todas as colunas" />
+          <DownloadButton
+            build={() => skusXlsx(skus)}
+            filename={skusFileName("xlsx", productId)}
+            mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            label="Excel"
+          />
+          <DownloadButton
+            build={() => skusCsv(skus)}
+            filename={skusFileName("csv", productId)}
+            label="CSV"
+          />
+        </div>
+      }
     >
       <div className="overflow-x-auto">
         <table className="tbl text-xs">
