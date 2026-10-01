@@ -6,6 +6,7 @@ import {
   cleanStatementId,
   detectResourceKind,
   PAYMENT_STATUSES,
+  readProductSearchStatus,
   STATEMENT_SORT_ORDERS,
   type PaymentStatus,
   type ResourceKind,
@@ -17,6 +18,8 @@ import type {
   Order,
   OrderListData,
   Product,
+  ProductSearchData,
+  ProductSummary,
   StatementListData,
   StatementTransactionsData,
   TikTokApiResponse,
@@ -40,6 +43,11 @@ import {
   StatementListView,
   type StatementListPageQuery,
 } from "./components/StatementListView";
+import {
+  ProductSearchView,
+  type ProductCollection,
+  type ProductSearchPageQuery,
+} from "./components/ProductSearchView";
 import { Sidebar } from "./components/Sidebar";
 import { Card } from "./components/ui";
 import { JsonDrawer } from "./components/JsonDrawer";
@@ -51,6 +59,7 @@ const HISTORY_LIMIT = 10;
 /** Resultado já discriminado pelo tipo de recurso consultado. */
 export type LoadedResource =
   | { kind: "product"; product: Product }
+  | { kind: "productSearch"; data: ProductSearchData; query: ProductSearchPageQuery }
   | { kind: "order"; orders: Order[]; requestedIds: string[] }
   | { kind: "transaction"; data: TransactionsByOrderData }
   | { kind: "statement"; statement: StatementTransactionsData; query: StatementPageQuery }
@@ -86,6 +95,30 @@ function requestedOrderIds(normalized: NormalizedUrl): string[] {
   const param = parseQueryParams(normalized.rawQuery).find((p) => p.name === "ids");
   if (param === undefined) return [];
   return param.value.split(",").map((id) => id.trim()).filter((id) => id !== "");
+}
+
+/**
+ * Lê da consulta de busca o que é preciso para montar a PRÓXIMA página:
+ * o page_size (na query) e o corpo enviado, de onde sai o status. A página
+ * seguinte repete os dois, porque o token foi emitido para aquele recorte.
+ */
+function productSearchPageQuery(normalized: NormalizedUrl, body: string): ProductSearchPageQuery {
+  const pageSize = Number(
+    parseQueryParams(normalized.rawQuery).find((p) => p.name === "page_size")?.value,
+  );
+  return {
+    pageSize: Number.isInteger(pageSize) && pageSize > 0 ? pageSize : undefined,
+    status: readProductSearchStatus(body),
+    body,
+  };
+}
+
+/** Junta por `id`, mantendo a primeira ocorrência e a ordem de chegada. */
+function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
+  if (incoming.length === 0) return current;
+  const seen = new Set(current.map((item) => item.id));
+  const added = incoming.filter((item) => !seen.has(item.id) && seen.add(item.id));
+  return added.length === 0 ? current : [...current, ...added];
 }
 
 /**
@@ -179,6 +212,20 @@ export default function App() {
   // Histórico só em memória — some ao recarregar a página, de propósito.
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
+  // Acumulado da extração de anúncios. Vive aqui, e não na tela, porque a
+  // busca é paginada (uma assinatura por página) e a extração é demorada:
+  // trocar de item no histórico não pode jogar fora o que já foi coletado.
+  const [collection, setCollection] = useState<ProductCollection>({
+    collected: [],
+    extracted: [],
+  });
+  const handleExtracted = useCallback((products: Product[]) => {
+    setCollection((prev) => ({ ...prev, extracted: mergeById(prev.extracted, products) }));
+  }, []);
+  const handleCollectionReset = useCallback(() => {
+    setCollection({ collected: [], extracted: [] });
+  }, []);
+
   const [jsonDrawerOpen, setJsonDrawerOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
   const [showToast, setShowToast] = useState(false);
@@ -195,13 +242,15 @@ export default function App() {
   }, [showToast]);
 
   const handleSubmit = useCallback(
-    async (normalized: NormalizedUrl) => {
+    async (normalized: NormalizedUrl, body?: string) => {
       setView({ kind: "loading" });
 
       // O tipo vem do path da URL assinada, não da aba escolhida no passo 1.
       const kind: ResourceKind = detectResourceKind(normalized.path);
       const age = signatureAgeSeconds(normalized);
-      const result = await fetchResource<unknown>(normalized, token);
+      // Só a busca de anúncios é POST; o corpo vai como foi assinado.
+      const searchBody = kind === "productSearch" ? (body ?? "") : undefined;
+      const result = await fetchResource<unknown>(normalized, token, searchBody);
 
       if (result.kind !== "ok") {
         // Idade medida no envio: separa "expirou" de "query diferente da assinada".
@@ -224,6 +273,17 @@ export default function App() {
         resource = { kind: "product", product };
         label = product.title ?? "(sem título)";
         subtitle = `Anúncio ${product.id}`;
+      } else if (kind === "productSearch") {
+        const data = result.data as ProductSearchData;
+        const found: ProductSummary[] = data.products ?? [];
+        resource = {
+          kind: "productSearch",
+          data,
+          query: productSearchPageQuery(normalized, searchBody ?? ""),
+        };
+        setCollection((prev) => ({ ...prev, collected: mergeById(prev.collected, found) }));
+        label = `${found.length} anúncio(s)`;
+        subtitle = `${data.total_count !== undefined ? `de ${data.total_count} · ` : ""}${data.next_page_token ? "há próxima página" : "última página"}`;
       } else if (kind === "order") {
         const orders = (result.data as OrderListData).orders ?? [];
         resource = { kind: "order", orders, requestedIds: requestedOrderIds(normalized) };
@@ -328,7 +388,9 @@ export default function App() {
         <main className="content">
           {success !== null && !queryOpen && (
             <div className="query-bar">
-              <span className="query-method">GET</span>
+              <span className="query-method">
+                {success.resource.kind === "productSearch" ? "POST" : "GET"}
+              </span>
               <code className="query-target" title={success.sentTarget}>
                 {success.sentTarget}
               </code>
@@ -356,7 +418,7 @@ export default function App() {
             >
               <QueryForm
                 token={token}
-                onSubmit={(n) => void handleSubmit(n)}
+                onSubmit={(n, body) => void handleSubmit(n, body)}
                 loading={view.kind === "loading"}
               />
             </Card>
@@ -443,6 +505,17 @@ export default function App() {
                   </div>
                   <DescriptionCard html={success.resource.product.description} />
                 </>
+              )}
+
+              {success.resource.kind === "productSearch" && (
+                <ProductSearchView
+                  data={success.resource.data}
+                  query={success.resource.query}
+                  token={token}
+                  collection={collection}
+                  onExtracted={handleExtracted}
+                  onReset={handleCollectionReset}
+                />
               )}
 
               {success.resource.kind === "order" && (

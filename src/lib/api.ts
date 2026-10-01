@@ -1,6 +1,7 @@
 import type {
   OrderListData,
   Product,
+  ProductSearchData,
   StatementTransactionsData,
   TikTokApiResponse,
   TransactionsByOrderData,
@@ -60,11 +61,18 @@ function isProxyErrorBody(value: unknown): value is ProxyErrorBody {
 export async function fetchResource<T>(
   normalized: NormalizedUrl,
   accessToken: string,
+  /**
+   * Corpo de um POST (busca de produtos). Quando presente a chamada vira
+   * POST e o texto segue byte a byte, como foi assinado — o TikTok inclui
+   * o corpo no `sign`, então nunca é reserializado.
+   */
+  body?: string,
 ): Promise<FetchResult<T>> {
   let httpResponse: Response;
   try {
     httpResponse = await fetch(PROXY_ENDPOINT, {
-      method: "GET",
+      method: body === undefined ? "GET" : "POST",
+      ...(body === undefined ? {} : { body }),
       // A URL do proxy é constante, então o cache do navegador poderia
       // devolver a resposta de outro produto — daí o no-store.
       cache: "no-store",
@@ -110,6 +118,15 @@ export function fetchProduct(
   accessToken: string,
 ): Promise<FetchResult<Product>> {
   return fetchResource<Product>(normalized, accessToken);
+}
+
+/** POST /product/202502/products/search — o corpo é o mesmo que foi assinado. */
+export function fetchProductSearch(
+  normalized: NormalizedUrl,
+  accessToken: string,
+  body: string,
+): Promise<FetchResult<ProductSearchData>> {
+  return fetchResource<ProductSearchData>(normalized, accessToken, body);
 }
 
 /** GET /order/202507/orders?ids=... */

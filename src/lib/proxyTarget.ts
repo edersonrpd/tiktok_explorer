@@ -90,6 +90,13 @@ export interface ProxyInput {
   method: string | undefined;
   target: string | null | undefined;
   accessToken: string | null | undefined;
+  /**
+   * Corpo do POST, repassado byte a byte. O TikTok inclui o corpo no
+   * cálculo do `sign` (exceto em multipart), então reserializar o JSON —
+   * até só trocar a ordem das chaves ou os espaços — invalidaria a
+   * assinatura. Só é usado em POST (ex.: busca de produtos).
+   */
+  body?: string | null;
 }
 
 /**
@@ -102,11 +109,11 @@ export async function proxyToTikTok(
 ): Promise<ProxyOutcome> {
   const json = "application/json";
 
-  if (input.method !== "GET") {
+  if (input.method !== "GET" && input.method !== "POST") {
     return {
       status: 405,
       contentType: json,
-      body: proxyErrorBody("Somente GET é suportado por este proxy."),
+      body: proxyErrorBody("Somente GET e POST são suportados por este proxy."),
     };
   }
 
@@ -118,7 +125,9 @@ export async function proxyToTikTok(
   let upstream: Response;
   try {
     upstream = await fetchImpl(target.url, {
-      method: "GET",
+      method: input.method,
+      // GET não tem corpo; no POST ele segue exatamente como foi assinado.
+      ...(input.method === "POST" ? { body: input.body ?? "" } : {}),
       headers: {
         [TOKEN_HEADER]: input.accessToken ?? "",
         "content-type": json,

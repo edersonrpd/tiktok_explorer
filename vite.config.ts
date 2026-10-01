@@ -29,6 +29,7 @@ function ttsDevProxy(): PluginOption {
             method: req.method,
             target: firstHeader(req.headers[TARGET_HEADER]),
             accessToken: firstHeader(req.headers[TOKEN_HEADER]),
+            body: req.method === "POST" ? await readBody(req) : null,
           });
           res.statusCode = outcome.status;
           res.setHeader("content-type", outcome.contentType);
@@ -38,6 +39,13 @@ function ttsDevProxy(): PluginOption {
       });
     },
   };
+}
+
+/** Lê o corpo cru da requisição, sem interpretar — ele é parte da assinatura. */
+async function readBody(req: AsyncIterable<Buffer | string>): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {

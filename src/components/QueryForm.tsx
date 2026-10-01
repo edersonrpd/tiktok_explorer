@@ -8,14 +8,27 @@ import {
   TIKTOK_API_HOST,
   type NormalizedUrl,
 } from "../lib/signedUrl";
+import { buildProductSearchBody } from "../lib/endpoint";
 import { formatAge } from "../lib/format";
 import { ParamsPanel } from "./ParamsPanel";
 
 interface QueryFormProps {
   /** Só para habilitar o envio — o campo do token fica no painel lateral. */
   token: string;
-  onSubmit: (normalized: NormalizedUrl) => void;
+  /** `body` só vem na busca de anúncios, que é um POST. */
+  onSubmit: (normalized: NormalizedUrl, body?: string) => void;
   loading: boolean;
+}
+
+/** Conferência do corpo do POST: precisa existir e ser JSON. */
+function bodyProblem(body: string): string | null {
+  if (body.trim() === "") return "Informe o corpo — ele é assinado junto com o caminho.";
+  try {
+    JSON.parse(body);
+    return null;
+  } catch {
+    return "O corpo não é um JSON válido.";
+  }
 }
 
 /**
@@ -25,6 +38,9 @@ interface QueryFormProps {
  */
 export function QueryForm({ token, onSubmit, loading }: QueryFormProps) {
   const [url, setUrl] = useState("");
+  // Corpo do POST (busca de anúncios). Segue como digitado: o TikTok o inclui
+  // no `sign`, então nem um espaço pode mudar entre assinar e enviar.
+  const [body, setBody] = useState(() => buildProductSearchBody());
 
   // Normaliza e valida a cada tecla; o painel de parâmetros fica sempre visível.
   const normalized = useMemo(() => normalizeSignedUrl(url), [url]);
@@ -33,7 +49,10 @@ export function QueryForm({ token, onSubmit, loading }: QueryFormProps) {
   const hasInput = url.trim() !== "";
   const blocked = validation.errors.length > 0;
   const encodedSeparator = validation.errors.find((e) => e.kind === "encoded-separator");
-  const canSubmit = hasInput && !blocked && token.trim() !== "" && !loading;
+  const needsBody = validation.resourceKind === "productSearch";
+  const bodyError = needsBody ? bodyProblem(body) : null;
+  const canSubmit =
+    hasInput && !blocked && bodyError === null && token.trim() !== "" && !loading;
 
   return (
     <div className="space-y-3">
@@ -63,6 +82,33 @@ export function QueryForm({ token, onSubmit, loading }: QueryFormProps) {
           </p>
         )}
       </div>
+
+      {needsBody && (
+        <div>
+          <label htmlFor="signed-body" className="mb-1 block text-xs font-bold t-3">
+            Corpo da requisição (POST) — o mesmo que foi enviado para assinar
+          </label>
+          <textarea
+            id="signed-body"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={2}
+            spellCheck={false}
+            className="inp font-mono leading-relaxed"
+          />
+          {bodyError !== null ? (
+            <p className="mt-1 flex items-start gap-1 text-xs text-red-700">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {bodyError}
+            </p>
+          ) : (
+            <p className="mt-1 text-[11px] t-4">
+              O corpo faz parte da assinatura e vai exatamente como está escrito aqui. Se o status
+              for outro, cole o corpo que o passo 1 mostrou.
+            </p>
+          )}
+        </div>
+      )}
 
       {hasInput && blocked && (
         <div className="alert alert-error px-3 py-2 text-xs t-2">
@@ -115,7 +161,7 @@ export function QueryForm({ token, onSubmit, loading }: QueryFormProps) {
         </p>
       )}
 
-      <button type="button" disabled={!canSubmit} onClick={() => onSubmit(normalized)} className="btn-primary w-full">
+      <button type="button" disabled={!canSubmit} onClick={() => onSubmit(normalized, needsBody ? body : undefined)} className="btn-primary w-full">
         <Search className="h-4 w-4" />
         {loading ? "Consultando..." : "Consultar"}
       </button>

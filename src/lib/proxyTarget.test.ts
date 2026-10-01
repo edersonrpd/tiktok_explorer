@@ -69,9 +69,38 @@ describe("proxyToTikTok", () => {
     expect(JSON.parse(outcome.body)).toMatchObject({ proxy_error: true });
   });
 
-  it("devolve 405 para método diferente de GET", async () => {
-    const outcome = await proxyToTikTok({ method: "POST", target: SIGNED, accessToken: "t" });
+  it("devolve 405 para método diferente de GET e POST", async () => {
+    const outcome = await proxyToTikTok({ method: "DELETE", target: SIGNED, accessToken: "t" });
     expect(outcome.status).toBe(405);
+  });
+
+  it("encaminha o corpo do POST byte a byte", async () => {
+    const fetchStub = vi.fn(
+      async () => new Response(JSON.stringify({ code: 0 }), { status: 200 }),
+    );
+    const body = '{"status": "ALL"}';
+
+    await proxyToTikTok(
+      { method: "POST", target: SIGNED, accessToken: "t", body },
+      fetchStub as unknown as typeof fetch,
+    );
+
+    const [, init] = fetchStub.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(body);
+  });
+
+  it("não envia corpo em GET", async () => {
+    const fetchStub = vi.fn(
+      async () => new Response(JSON.stringify({ code: 0 }), { status: 200 }),
+    );
+    await proxyToTikTok(
+      { method: "GET", target: SIGNED, accessToken: "t", body: "ignorado" },
+      fetchStub as unknown as typeof fetch,
+    );
+    const [, init] = fetchStub.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
   });
 
   it("devolve 502 quando o upstream está inalcançável", async () => {

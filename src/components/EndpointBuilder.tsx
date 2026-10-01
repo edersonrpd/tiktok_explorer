@@ -1,14 +1,29 @@
 import { useMemo, useState } from "react";
-import { Banknote, Hourglass, Landmark, Link2, Package, Receipt, Tag, type LucideIcon } from "lucide-react";
+import {
+  Banknote,
+  Boxes,
+  Hourglass,
+  Landmark,
+  Link2,
+  Package,
+  Receipt,
+  Tag,
+  type LucideIcon,
+} from "lucide-react";
 import {
   buildOrderEndpoint,
   buildProductEndpoint,
+  buildProductSearchBody,
+  buildProductSearchEndpoint,
   buildStatementEndpoint,
   buildStatementListEndpoint,
   buildTransactionEndpoint,
   buildUnsettledEndpoint,
+  DEFAULT_PRODUCT_SEARCH_PAGE_SIZE,
   DEFAULT_STATEMENT_PAGE_SIZE,
   DEFAULT_UNSETTLED_PAGE_SIZE,
+  MAX_PRODUCT_SEARCH_PAGE_SIZE,
+  MIN_PRODUCT_SEARCH_PAGE_SIZE,
   MAX_STATEMENT_PAGE_SIZE,
   MAX_UNSETTLED_PAGE_SIZE,
   DEFAULT_STATEMENT_LIST_PAGE_SIZE,
@@ -19,6 +34,8 @@ import {
   parseOrderIds,
   parseSearchTime,
   PAYMENT_STATUSES,
+  PRODUCT_SEARCH_API_VERSION,
+  PRODUCT_STATUSES,
   STATEMENT_LIST_SORT_FIELD,
   STATEMENT_SORT_FIELD,
   STATEMENT_SORT_ORDERS,
@@ -26,6 +43,7 @@ import {
   UNSETTLED_SORT_FIELD,
   type EndpointResult,
   type PaymentStatus,
+  type ProductStatus,
   type StatementSortOrder,
 } from "../lib/endpoint";
 import { TIKTOK_API_HOST } from "../lib/signedUrl";
@@ -33,6 +51,7 @@ import { Card, CopyButton } from "./ui";
 
 export type BuilderTab =
   | "product"
+  | "productSearch"
   | "order"
   | "transaction"
   | "statementList"
@@ -45,6 +64,12 @@ export type BuilderTab =
  */
 export const BUILDER_TABS: { id: BuilderTab; label: string; hint: string; icon: LucideIcon }[] = [
   { id: "product", label: "Anúncio", hint: "Dados de um anúncio pelo ID do produto.", icon: Tag },
+  {
+    id: "productSearch",
+    label: "Todos os anúncios",
+    hint: "Lista os anúncios da loja e extrai o cadastro completo de cada um.",
+    icon: Boxes,
+  },
   { id: "order", label: "Pedidos", hint: "Um ou mais pedidos pelos IDs.", icon: Package },
   {
     id: "transaction",
@@ -94,6 +119,9 @@ export function builderTabInfo(tab: BuilderTab): (typeof BUILDER_TABS)[number] {
 export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
   const activeTab = builderTabInfo(tab);
   const [productId, setProductId] = useState("");
+  const [searchStatus, setSearchStatus] = useState<ProductStatus>("ALL");
+  const [searchPageSize, setSearchPageSize] = useState(String(DEFAULT_PRODUCT_SEARCH_PAGE_SIZE));
+  const [searchPageToken, setSearchPageToken] = useState("");
   const [orderIds, setOrderIds] = useState("");
   const [transactionOrderId, setTransactionOrderId] = useState("");
   const [statementId, setStatementId] = useState("");
@@ -113,6 +141,18 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
   const [listPageToken, setListPageToken] = useState("");
 
   const productResult = useMemo(() => buildProductEndpoint(productId), [productId]);
+  const productSearchResult = useMemo(
+    () =>
+      buildProductSearchEndpoint({
+        pageSize:
+          searchPageSize.trim() === ""
+            ? DEFAULT_PRODUCT_SEARCH_PAGE_SIZE
+            : Number(searchPageSize),
+        pageToken: searchPageToken,
+      }),
+    [searchPageSize, searchPageToken],
+  );
+  const searchBody = useMemo(() => buildProductSearchBody(searchStatus), [searchStatus]);
   const orderResult = useMemo(() => buildOrderEndpoint(orderIds), [orderIds]);
   const parsedOrderIds = useMemo(() => parseOrderIds(orderIds), [orderIds]);
   const transactionResult = useMemo(
@@ -181,6 +221,7 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
     { result: EndpointResult; input: string; alwaysCheck?: boolean }
   > = {
     product: { result: productResult, input: productId },
+    productSearch: { result: productSearchResult, input: "", alwaysCheck: true },
     order: { result: orderResult, input: orderIds },
     transaction: { result: transactionResult, input: transactionOrderId },
     statementList: { result: statementListResult, input: "", alwaysCheck: true },
@@ -209,6 +250,76 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
             placeholder="1736320032383141477"
             className="inp font-mono"
           />
+        </>
+      )}
+
+      {tab === "productSearch" && (
+        <>
+          <p className="text-xs t-3">
+            Lista os anúncios da loja <strong className="t-1">sem precisar de código</strong>. É o
+            primeiro passo para extrair tudo: o resultado traz o <code>id</code> de cada anúncio,
+            que a extração em lote usa para buscar o cadastro completo.
+          </p>
+
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <label htmlFor="search-status" className="mb-1 block text-xs font-bold t-3">
+                status (no corpo)
+              </label>
+              <select
+                id="search-status"
+                value={searchStatus}
+                onChange={(e) => setSearchStatus(e.target.value as ProductStatus)}
+                className="inp font-mono"
+              >
+                {PRODUCT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="search-page-size" className="mb-1 block text-xs font-bold t-3">
+                page_size
+              </label>
+              <input
+                id="search-page-size"
+                value={searchPageSize}
+                onChange={(e) => setSearchPageSize(e.target.value)}
+                inputMode="numeric"
+                min={MIN_PRODUCT_SEARCH_PAGE_SIZE}
+                max={MAX_PRODUCT_SEARCH_PAGE_SIZE}
+                className="inp font-mono"
+              />
+            </div>
+          </div>
+
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs font-bold t-3">
+              Página seguinte? Informe o page_token
+            </summary>
+            <textarea
+              value={searchPageToken}
+              onChange={(e) => setSearchPageToken(e.target.value)}
+              spellCheck={false}
+              rows={2}
+              aria-label="page_token da busca de anúncios"
+              placeholder="cole aqui o next_page_token devolvido na página anterior"
+              className="inp mt-1 font-mono leading-relaxed"
+            />
+            <p className="mt-1 text-[11px] t-4">
+              A tela de resultado já monta a URL da página seguinte; este campo é só para quem
+              prefere montar à mão. Use o MESMO status da página anterior.
+            </p>
+          </details>
+
+          <p className="mt-2 text-[11px] t-3">
+            Este é o único endpoint <strong className="t-1">POST</strong> da aplicação (versão{" "}
+            {PRODUCT_SEARCH_API_VERSION}). O filtro vai no <strong className="t-1">corpo</strong>, e
+            o corpo entra no cálculo do <code>sign</code> — o sistema interno precisa assinar o
+            caminho <em>e</em> o corpo abaixo, exatamente como estão.
+          </p>
         </>
       )}
 
@@ -566,10 +677,20 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
         </div>
       )}
 
+      {tab === "productSearch" && fullUrl !== null && (
+        <div className="panel-success mt-2 flex items-center gap-2 px-3 py-2">
+          <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide t-3">Corpo</span>
+          <code className="flex-1 select-all break-all font-mono text-xs t-1">{searchBody}</code>
+          <CopyButton text={searchBody} label="Copiar corpo" />
+        </div>
+      )}
+
       <p className="mt-2 text-[11px] t-4">
         Envie esta URL ao sistema interno de assinatura. Ele acrescenta shop_cipher, app_key,
         timestamp e sign, e devolve a URL assinada para colar no passo 2.
         {tab === "order" && " O ids já vai na query porque é assinado junto com os demais parâmetros."}
+        {tab === "productSearch" &&
+          " O page_size e o page_token vão na query; o status vai no corpo (POST)."}
         {(tab === "statement" || tab === "unsettled" || tab === "statementList") &&
           " Os parâmetros da query já vão na URL porque são assinados junto com os demais."}
       </p>

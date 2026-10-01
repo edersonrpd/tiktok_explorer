@@ -10,6 +10,7 @@ Endpoints suportados:
 | Recurso | Endpoint | Onde vai o código |
 |---|---|---|
 | Anúncio | `/product/202309/products/{id}` | no path |
+| Todos os anúncios | `POST /product/202502/products/search?page_size=...` | **não tem código** — filtro no **corpo** |
 | Pedidos | `/order/202507/orders?ids=a,b` | na **query** (`ids`) |
 | Transações do pedido | `/finance/202501/orders/{order_id}/statement_transactions` | no path |
 | Repasses | `/finance/202309/statements?sort_field=...` | **não tem código** — só query |
@@ -17,7 +18,8 @@ Endpoints suportados:
 | A liquidar | `/finance/202507/orders/unsettled?sort_field=...` | **não tem código** — só query |
 
 Esta aplicação **não** calcula `sign` e **não** pede `app_secret`. O fluxo é
-sempre: colar a URL assinada + o access token → GET → resultado.
+sempre: colar a URL assinada + o access token → GET → resultado (a busca de
+anúncios é o único POST: o corpo também é colado, como foi assinado).
 
 ## Como rodar
 
@@ -118,6 +120,14 @@ path + query intactos.
   - *Anúncio*: informe o `product_id` e a aplicação monta
     `/product/202309/products/<id>`. Aceita o ID puro e tolera colar um
     path ou URL inteiro (fica com o último segmento antes da query).
+  - *Todos os anúncios*: **não pede código** — lista os anúncios da loja e
+    monta `/product/202502/products/search?page_size=100`, com o filtro de
+    `status` no **corpo** (`{"status":"ALL"}`). É o **único POST** da
+    aplicação, e isso muda duas coisas: o corpo entra no cálculo do `sign`
+    (o sistema interno assina o caminho *e* o corpo, e o passo 2 mostra um
+    campo para colar o mesmo corpo, enviado byte a byte — o proxy não o
+    reserializa), e `page_size`/`page_token` continuam na **query**. Ver
+    *Extração de todos os anúncios* abaixo.
   - *Pedidos*: informe um ou vários order ids — separados por vírgula,
     espaço ou quebra de linha, para colar direto de planilha — e a
     aplicação monta `/order/202507/orders?ids=a,b`, removendo repetidos
@@ -395,6 +405,42 @@ path + query intactos.
   decimais da API acumula erro binário e o total deixa de bater com
   `total_amount` por centavos — justamente a conferência que a tela existe
   para fazer.
+- **Extração de todos os anúncios** ([`src/lib/productBatch.ts`](src/lib/productBatch.ts),
+  [`src/components/ProductSearchView.tsx`](src/components/ProductSearchView.tsx)).
+  A busca devolve só o resumo de cada anúncio (id, título, status, SKUs com
+  preço e estoque); o cadastro completo (EAN, categoria, atributos, imagens,
+  dimensões, `external_product_id`) vem do detalhe de **cada** anúncio, e
+  cada chamada precisa da própria assinatura. O fluxo mantém o padrão do
+  app — sempre URL já assinada — e junta as peças:
+  1. **Buscar**, página a página. Cada página é uma nova assinatura (o
+     `page_token` é assinado junto), e a tela monta a URL e o corpo da
+     seguinte. Os anúncios de todas as páginas consultadas ficam
+     acumulados na sessão, sem repetidos.
+  2. **Assinar o lote**: a tela lista o caminho de detalhe de cada anúncio
+     coletado que ainda não foi extraído, com botão de copiar todos.
+  3. **Colar as URLs assinadas**, uma por linha. Cada linha é validada como
+     uma consulta avulsa e precisa ser o *detalhe de um anúncio* — outro
+     endpoint no meio do lote é recusado com o número da linha; repetidos
+     são ignorados; assinaturas com mais de ~4 min são avisadas.
+  4. **Extrair**: 3 chamadas por vez (a API limita a taxa por loja), com
+     progresso e botão de parar. Falha transitória (rede, 429, 5xx) é
+     repetida até 2 vezes; assinatura inválida e anúncio inexistente não,
+     porque repetir não muda o resultado. O que falhar é listado com o
+     motivo e o `request_id`, e o botão copia só os caminhos das falhas
+     para assinar de novo. O resultado vem na ordem em que as URLs foram
+     coladas.
+  5. **Exportar** (*Excel*, *CSV*, *Copiar*) com **uma linha por SKU** e os
+     dados do anúncio repetidos — o formato do de-para com o ERP, em que o
+     `seller_sku` é a chave. Anúncio sem variações sai em uma linha, com as
+     colunas de SKU vazias, para não sumir da planilha.
+
+  O acumulado vive no `App`, não na tela: trocar de item no histórico não
+  descarta o que já foi coletado ou extraído. *Zerar coleta* recomeça.
+
+  A busca é **por loja** (um `shop_cipher`). A `202502` é a versão mais nova
+  do snapshot da documentação; a `202312` não traz `product_families` nem
+  `has_draft`.
+
 - **Diagnóstico de integração**: alertas automáticos de `external_product_id`
   ambíguo, `seller_sku` vazio/duplicado, estoque baixo, preços divergentes,
   EAN ausente e descrição escrita para uma única cor.

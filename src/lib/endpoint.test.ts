@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildOrderEndpoint,
   buildProductEndpoint,
+  buildProductSearchBody,
+  buildProductSearchEndpoint,
+  readProductSearchStatus,
   buildTransactionEndpoint,
   buildUnsettledEndpoint,
   cleanProductId,
@@ -391,5 +394,43 @@ describe("detectResourceKind dos dois caminhos de /statements", () => {
     expect(
       detectResourceKind("/finance/202501/statements/7238804564097517339/statement_transactions"),
     ).toBe("statement");
+  });
+});
+
+describe("busca de anúncios (productSearch)", () => {
+  it("monta o caminho com page_size e sem token na primeira página", () => {
+    expect(buildProductSearchEndpoint()).toEqual({
+      ok: true,
+      path: "/product/202502/products/search?page_size=100",
+    });
+  });
+
+  it("acrescenta o page_token da página seguinte", () => {
+    expect(buildProductSearchEndpoint({ pageSize: 50, pageToken: "b2Zmc2V0PTAK" })).toEqual({
+      ok: true,
+      path: "/product/202502/products/search?page_size=50&page_token=b2Zmc2V0PTAK",
+    });
+  });
+
+  it("recusa page_size fora de 1–100 e token quebrado", () => {
+    expect(buildProductSearchEndpoint({ pageSize: 0 }).ok).toBe(false);
+    expect(buildProductSearchEndpoint({ pageSize: 101 }).ok).toBe(false);
+    expect(buildProductSearchEndpoint({ pageToken: "abc def" }).ok).toBe(false);
+  });
+
+  it("o corpo é JSON compacto e estável", () => {
+    expect(buildProductSearchBody()).toBe('{"status":"ALL"}');
+    expect(buildProductSearchBody("ACTIVATE")).toBe('{"status":"ACTIVATE"}');
+  });
+
+  it("lê de volta o status do corpo, ignorando o que não conhece", () => {
+    expect(readProductSearchStatus('{"status":"DRAFT"}')).toBe("DRAFT");
+    expect(readProductSearchStatus('{"status":"XYZ"}')).toBeUndefined();
+    expect(readProductSearchStatus("não é json")).toBeUndefined();
+  });
+
+  it("detecta a busca sem confundi-la com o detalhe de um anúncio", () => {
+    expect(detectResourceKind("/product/202502/products/search")).toBe("productSearch");
+    expect(detectResourceKind("/product/202309/products/1736320032383141477")).toBe("product");
   });
 });

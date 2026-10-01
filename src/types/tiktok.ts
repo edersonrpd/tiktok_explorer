@@ -594,3 +594,43 @@ export interface StatementListData {
 }
 
 export type StatementListResponse = TikTokApiResponse<StatementListData>;
+
+/* ------------------------------------------------------------------------ */
+/* Lista de anúncios — POST /product/202502/products/search                  */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * A busca devolve só as propriedades-chave de cada anúncio. Para o cadastro
+ * completo (descrição, imagens, atributos, EAN, dimensões...) é preciso
+ * consultar cada `id` no Get Product — que é o que a extração em lote faz.
+ */
+
+export interface ProductSearchSku {
+  id: string;
+  seller_sku?: string;
+  price?: Price;
+  inventory?: Inventory[];
+  /** Presente na 202502; o formato exato varia por região. */
+  sales_attributes?: SalesAttribute[];
+}
+
+/** Um item da lista de anúncios. */
+export interface ProductSummary {
+  id: string;
+  title?: string;
+  status?: string;
+  create_time?: number;
+  update_time?: number;
+  has_draft?: boolean;
+  is_not_for_sale?: boolean;
+  listing_quality_tier?: string;
+  audit?: AuditInfo;
+  skus?: ProductSearchSku[];
+}
+
+export interface ProductSearchData {
+  products?: ProductSummary[];
+  next_page_token?: string;
+  /** Total de anúncios que atendem ao filtro (a lista inteira, não só a página). */
+  total_count?: number;
+}

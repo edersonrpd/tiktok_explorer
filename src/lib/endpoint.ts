@@ -45,6 +45,13 @@ export const UNSETTLED_API_VERSION = "202507";
 /** Versão do endpoint que LISTA os repasses (parte do path assinado). */
 export const STATEMENT_LIST_API_VERSION = "202309";
 
+/**
+ * Versão do endpoint que LISTA os anúncios da loja (parte do path assinado).
+ * É a mais nova do snapshot da documentação; a 202312 ainda existe, mas
+ * não traz `product_families`, `has_draft` nem os filtros novos.
+ */
+export const PRODUCT_SEARCH_API_VERSION = "202502";
+
 /** Limite de IDs por chamada, conforme a documentação do Get Order Detail. */
 export const MAX_ORDER_IDS = 50;
 
@@ -53,6 +60,8 @@ export type ResourceKind =
   | "product"
   | "order"
   | "transaction"
+  /** A LISTA de anúncios da loja (`/products/search`) — é um POST, com corpo. */
+  | "productSearch"
   /** Transações DE UM repasse (`/statements/{id}/statement_transactions`). */
   | "statement"
   /** A LISTA de repasses (`/statements`), de onde sai o id acima. */
@@ -581,12 +590,116 @@ export function buildStatementListEndpoint(
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Lista de anúncios — POST /product/202502/products/search            */
+/* ------------------------------------------------------------------ */
+
+/** Faixa aceita por `page_size` (obrigatório na API; sem padrão). */
+export const MIN_PRODUCT_SEARCH_PAGE_SIZE = 1;
+export const MAX_PRODUCT_SEARCH_PAGE_SIZE = 100;
+export const DEFAULT_PRODUCT_SEARCH_PAGE_SIZE = MAX_PRODUCT_SEARCH_PAGE_SIZE;
+
+/**
+ * Filtro por situação do anúncio. `ALL` é o padrão da API. `DELETED` fica
+ * de fora do "ALL" no painel do TikTok, mas a API o aceita à parte.
+ */
+export const PRODUCT_STATUSES = [
+  "ALL",
+  "ACTIVATE",
+  "DRAFT",
+  "PENDING",
+  "FAILED",
+  "SELLER_DEACTIVATED",
+  "PLATFORM_DEACTIVATED",
+  "FREEZE",
+  "DELETED",
+] as const;
+export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
+
+export interface ProductSearchOptions {
+  pageSize?: number;
+  /** `next_page_token` da página anterior; ausente na primeira página. */
+  pageToken?: string;
+  status?: ProductStatus;
+}
+
+/**
+ * Monta `/product/{versão}/products/search?page_size=...`.
+ *
+ * Diferente de todos os outros endpoints desta aplicação, este é um POST:
+ * o filtro (`status`) vai no CORPO, e o corpo entra no cálculo do `sign`.
+ * Por isso o passo 1 entrega duas coisas — o caminho e o corpo — e o
+ * sistema interno precisa assinar as duas. `page_size` e `page_token`,
+ * ao contrário, são parâmetros de QUERY.
+ */
+export function buildProductSearchEndpoint(options: ProductSearchOptions = {}): EndpointResult {
+  const { pageSize = DEFAULT_PRODUCT_SEARCH_PAGE_SIZE, pageToken } = options;
+
+  if (
+    !Number.isInteger(pageSize) ||
+    pageSize < MIN_PRODUCT_SEARCH_PAGE_SIZE ||
+    pageSize > MAX_PRODUCT_SEARCH_PAGE_SIZE
+  ) {
+    return {
+      ok: false,
+      reason: `page_size precisa ser um inteiro entre ${MIN_PRODUCT_SEARCH_PAGE_SIZE} e ${MAX_PRODUCT_SEARCH_PAGE_SIZE} (informado: ${pageSize}).`,
+    };
+  }
+
+  const token = pageToken?.trim() ?? "";
+  if (token !== "" && !PAGE_TOKEN_PATTERN.test(token)) {
+    return {
+      ok: false,
+      reason:
+        "O page_token deve ser copiado exatamente como veio em next_page_token (letras, números e + / = _ -). " +
+        "Espaços ou outros caracteres indicam que ele foi quebrado no copiar/colar.",
+    };
+  }
+
+  // Ordem alfabética: page_size, page_token.
+  const params = [`page_size=${pageSize}`];
+  if (token !== "") params.push(`page_token=${token}`);
+
+  return {
+    ok: true,
+    path: `/product/${PRODUCT_SEARCH_API_VERSION}/products/search?${params.join("&")}`,
+  };
+}
+
+/**
+ * Corpo JSON da busca, compacto e sempre igual para o mesmo filtro.
+ *
+ * O `status` entra mesmo quando é `ALL` (o padrão da API): um corpo
+ * explícito evita a dúvida entre "sem corpo" e `{}` na hora de assinar,
+ * e o sistema de assinatura e esta aplicação passam a enviar exatamente
+ * os mesmos bytes.
+ */
+export function buildProductSearchBody(status: ProductStatus = "ALL"): string {
+  return JSON.stringify({ status });
+}
+
+/**
+ * Lê o `status` de um corpo de busca já montado, só para a página seguinte
+ * sair com o MESMO filtro (o token foi emitido para aquele recorte).
+ */
+export function readProductSearchStatus(body: string): ProductStatus | undefined {
+  try {
+    const status = (JSON.parse(body) as { status?: unknown }).status;
+    return PRODUCT_STATUSES.find((s) => s === status);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Descobre o tipo de recurso pelo path da URL assinada, para que a
  * validação e a exibição não dependam da aba selecionada — colar uma URL
  * de pedido com a aba de produto aberta continua funcionando.
  */
 export function detectResourceKind(path: string): ResourceKind {
+  // A busca é /products/search; o detalhe é /products/{id}. Testar a busca
+  // antes impede que "search" seja lido como o ID de um anúncio.
+  if (/^\/product\/\d+\/products\/search\/?$/.test(path)) return "productSearch";
   if (path.startsWith("/product/")) return "product";
   if (path.startsWith("/order/")) return "order";
   // Os dois endpoints de finanças terminam em /statement_transactions e só

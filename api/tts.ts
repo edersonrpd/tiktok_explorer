@@ -19,6 +19,8 @@ export default async function handler(request: Request): Promise<Response> {
     method: request.method,
     target: request.headers.get(TARGET_HEADER),
     accessToken: request.headers.get(TOKEN_HEADER),
+    // Só o POST (busca de produtos) leva corpo, e ele não pode ser alterado.
+    body: request.method === "POST" ? await request.text() : null,
   });
 
   return new Response(outcome.body, {

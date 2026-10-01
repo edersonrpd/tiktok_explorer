@@ -30,6 +30,7 @@ export const SIGNATURE_PARAMS = ["shop_cipher", "app_key", "timestamp", "sign"] 
  */
 const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
+  productSearch: ["page_size"],
   order: ["ids"],
   transaction: [],
   statement: ["sort_field"],
@@ -47,6 +48,7 @@ const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
  */
 const OPTIONAL_ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
+  productSearch: ["page_token"],
   order: [],
   transaction: [],
   statement: ["page_size", "sort_order", "page_token"],
