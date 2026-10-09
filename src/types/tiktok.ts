@@ -634,3 +634,23 @@ export interface ProductSearchData {
   /** Total de anúncios que atendem ao filtro (a lista inteira, não só a página). */
   total_count?: number;
 }
+
+/* -------------------------------------------------------------------- */
+/* Pacote — GET /fulfillment/202309/packages/{package_id}               */
+/* -------------------------------------------------------------------- */
+
+/**
+ * Detalhe do pacote. O snapshot local da documentação não cobre o módulo
+ * Fulfillment, então só os campos usados na tela estão tipados e todos são
+ * opcionais; a resposta completa continua disponível no JSON bruto.
+ */
+export interface PackageDetail {
+  package_id?: string;
+  order_id?: string;
+  order_ids?: string[];
+  orders?: { id?: string }[];
+  tracking_number?: string;
+  shipping_provider_id?: string;
+  shipping_provider_name?: string;
+  package_status?: string;
+}

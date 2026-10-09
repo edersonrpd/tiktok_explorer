@@ -16,6 +16,7 @@ import { parseQueryParams, signatureAgeSeconds, type NormalizedUrl } from "./lib
 import { formatEpochDateBR } from "./lib/format";
 import type {
   Order,
+  PackageDetail,
   OrderListData,
   Product,
   ProductSearchData,
@@ -36,6 +37,8 @@ import { DescriptionCard } from "./components/DescriptionCard";
 import { AttributesCard, PackageCard } from "./components/AttributesCard";
 import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { OrderView } from "./components/OrderView";
+import { PackageView } from "./components/PackageView";
+import { packageOrderIds } from "./lib/packages";
 import { TransactionView } from "./components/TransactionView";
 import { StatementView, type StatementPageQuery } from "./components/StatementView";
 import { UnsettledView, type UnsettledPageQuery } from "./components/UnsettledView";
@@ -61,6 +64,7 @@ export type LoadedResource =
   | { kind: "product"; product: Product }
   | { kind: "productSearch"; data: ProductSearchData; query: ProductSearchPageQuery }
   | { kind: "order"; orders: Order[]; requestedIds: string[] }
+  | { kind: "package"; data: PackageDetail; requestedId: string }
   | { kind: "transaction"; data: TransactionsByOrderData }
   | { kind: "statement"; statement: StatementTransactionsData; query: StatementPageQuery }
   | { kind: "unsettled"; unsettled: UnsettledTransactionsData; query: UnsettledPageQuery }
@@ -289,6 +293,12 @@ export default function App() {
         resource = { kind: "order", orders, requestedIds: requestedOrderIds(normalized) };
         label = `${orders.length} pedido(s)`;
         subtitle = orders.map((o) => o.id).join(", ") || "nenhum retornado";
+      } else if (kind === "package") {
+        const data = result.data as PackageDetail;
+        const requestedId = normalized.path.split("/").filter((p) => p !== "").pop() ?? "";
+        resource = { kind: "package", data, requestedId };
+        label = `Pacote ${data.package_id ?? requestedId}`;
+        subtitle = packageOrderIds(data).join(", ") || "pedido não identificado";
       } else if (kind === "transaction") {
         const data = result.data as TransactionsByOrderData;
         resource = { kind: "transaction", data };
@@ -522,6 +532,13 @@ export default function App() {
                 <OrderView
                   orders={success.resource.orders}
                   requestedIds={success.resource.requestedIds}
+                />
+              )}
+
+              {success.resource.kind === "package" && (
+                <PackageView
+                  data={success.resource.data}
+                  requestedId={success.resource.requestedId}
                 />
               )}
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOrderEndpoint,
+  buildPackageEndpoint,
   buildProductEndpoint,
   buildProductSearchBody,
   buildProductSearchEndpoint,
@@ -432,5 +433,23 @@ describe("busca de anúncios (productSearch)", () => {
   it("detecta a busca sem confundi-la com o detalhe de um anúncio", () => {
     expect(detectResourceKind("/product/202502/products/search")).toBe("productSearch");
     expect(detectResourceKind("/product/202309/products/1736320032383141477")).toBe("product");
+  });
+});
+
+describe("pacote (package)", () => {
+  it("monta o path do Get Package Detail", () => {
+    expect(buildPackageEndpoint(" 1153829348291 ")).toEqual({
+      ok: true,
+      path: "/fulfillment/202309/packages/1153829348291",
+    });
+  });
+
+  it("recusa vazio e código não numérico", () => {
+    expect(buildPackageEndpoint("").ok).toBe(false);
+    expect(buildPackageEndpoint("TTPC123").ok).toBe(false);
+  });
+
+  it("detecta o recurso pelo path", () => {
+    expect(detectResourceKind("/fulfillment/202309/packages/1153829348291")).toBe("package");
   });
 });

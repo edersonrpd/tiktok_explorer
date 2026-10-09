@@ -52,6 +52,9 @@ export const STATEMENT_LIST_API_VERSION = "202309";
  */
 export const PRODUCT_SEARCH_API_VERSION = "202502";
 
+/** Versão do endpoint de detalhe do pacote (Fulfillment; parte do path assinado). */
+export const PACKAGE_API_VERSION = "202309";
+
 /** Limite de IDs por chamada, conforme a documentação do Get Order Detail. */
 export const MAX_ORDER_IDS = 50;
 
@@ -60,6 +63,8 @@ export type ResourceKind =
   | "product"
   | "order"
   | "transaction"
+  /** Detalhe de UM pacote (`/fulfillment/.../packages/{id}`) — de onde sai o pedido. */
+  | "package"
   /** A LISTA de anúncios da loja (`/products/search`) — é um POST, com corpo. */
   | "productSearch"
   /** Transações DE UM repasse (`/statements/{id}/statement_transactions`). */
@@ -161,6 +166,23 @@ export function buildOrderEndpoint(raw: string): EndpointResult {
   }
 
   return { ok: true, path: `/order/${ORDER_API_VERSION}/orders?ids=${ids.join(",")}` };
+}
+
+/** Monta `/fulfillment/{versão}/packages/{package_id}` ou explica por que não deu. */
+export function buildPackageEndpoint(rawId: string): EndpointResult {
+  const id = cleanProductId(rawId);
+
+  if (id === "") {
+    return { ok: false, reason: "Informe o código do pacote (package_id)." };
+  }
+  if (!/^\d+$/.test(id)) {
+    return {
+      ok: false,
+      reason: `O código do pacote é composto só por números (ex.: 1153829348291). Valor lido: "${id}".`,
+    };
+  }
+
+  return { ok: true, path: `/fulfillment/${PACKAGE_API_VERSION}/packages/${id}` };
 }
 
 /** Monta `/finance/{versão}/orders/{order_id}/statement_transactions`. */
@@ -702,6 +724,7 @@ export function detectResourceKind(path: string): ResourceKind {
   if (/^\/product\/\d+\/products\/search\/?$/.test(path)) return "productSearch";
   if (path.startsWith("/product/")) return "product";
   if (path.startsWith("/order/")) return "order";
+  if (/^\/fulfillment\/\d+\/packages\/[^/]+\/?$/.test(path)) return "package";
   // Os dois endpoints de finanças terminam em /statement_transactions e só
   // se distinguem pelo segmento do meio: /orders/{id} traz as transações
   // de UM pedido; /statements/{id} traz as do repasse inteiro.

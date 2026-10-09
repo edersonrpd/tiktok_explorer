@@ -32,6 +32,7 @@ const ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
   productSearch: ["page_size"],
   order: ["ids"],
+  package: [],
   transaction: [],
   statement: ["sort_field"],
   statementList: ["sort_field"],
@@ -50,6 +51,7 @@ const OPTIONAL_ENDPOINT_PARAMS: Record<ResourceKind, readonly string[]> = {
   product: [],
   productSearch: ["page_token"],
   order: [],
+  package: [],
   transaction: [],
   statement: ["page_size", "sort_order", "page_token"],
   statementList: [

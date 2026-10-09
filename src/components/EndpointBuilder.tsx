@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   buildOrderEndpoint,
+  buildPackageEndpoint,
   buildProductEndpoint,
   buildProductSearchBody,
   buildProductSearchEndpoint,
@@ -53,6 +54,7 @@ export type BuilderTab =
   | "product"
   | "productSearch"
   | "order"
+  | "package"
   | "transaction"
   | "statementList"
   | "statement"
@@ -71,6 +73,12 @@ export const BUILDER_TABS: { id: BuilderTab; label: string; hint: string; icon: 
     icon: Boxes,
   },
   { id: "order", label: "Pedidos", hint: "Um ou mais pedidos pelos IDs.", icon: Package },
+  {
+    id: "package",
+    label: "Pacote",
+    hint: "Acha o pedido pelo código do pacote (package_id).",
+    icon: Package,
+  },
   {
     id: "transaction",
     label: "Transações do pedido",
@@ -123,6 +131,7 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
   const [searchPageSize, setSearchPageSize] = useState(String(DEFAULT_PRODUCT_SEARCH_PAGE_SIZE));
   const [searchPageToken, setSearchPageToken] = useState("");
   const [orderIds, setOrderIds] = useState("");
+  const [packageId, setPackageId] = useState("");
   const [transactionOrderId, setTransactionOrderId] = useState("");
   const [statementId, setStatementId] = useState("");
   const [pageSize, setPageSize] = useState(String(DEFAULT_STATEMENT_PAGE_SIZE));
@@ -154,6 +163,7 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
   );
   const searchBody = useMemo(() => buildProductSearchBody(searchStatus), [searchStatus]);
   const orderResult = useMemo(() => buildOrderEndpoint(orderIds), [orderIds]);
+  const packageResult = useMemo(() => buildPackageEndpoint(packageId), [packageId]);
   const parsedOrderIds = useMemo(() => parseOrderIds(orderIds), [orderIds]);
   const transactionResult = useMemo(
     () => buildTransactionEndpoint(transactionOrderId),
@@ -223,6 +233,7 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
     product: { result: productResult, input: productId },
     productSearch: { result: productSearchResult, input: "", alwaysCheck: true },
     order: { result: orderResult, input: orderIds },
+    package: { result: packageResult, input: packageId },
     transaction: { result: transactionResult, input: transactionOrderId },
     statementList: { result: statementListResult, input: "", alwaysCheck: true },
     statement: { result: statementResult, input: statementId },
@@ -343,6 +354,26 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
               quebra de linha — repetidos são removidos.
             </p>
           )}
+        </>
+      )}
+
+      {tab === "package" && (
+        <>
+          <label htmlFor="package-id" className="mb-1 block text-xs font-bold t-3">
+            Código do pacote (package_id)
+          </label>
+          <input
+            id="package-id"
+            value={packageId}
+            onChange={(e) => setPackageId(e.target.value)}
+            spellCheck={false}
+            placeholder="ex.: 1153829348291"
+            className="inp font-mono"
+          />
+          <p className="mt-1 text-[11px] t-3">
+            Este endpoint é do módulo Fulfillment e exige o escopo de fulfillment no app. A
+            resposta traz o ID do pedido; use-o na aba Pedidos.
+          </p>
         </>
       )}
 
