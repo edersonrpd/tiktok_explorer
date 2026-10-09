@@ -444,9 +444,16 @@ describe("pacote (package)", () => {
     });
   });
 
-  it("recusa vazio e código não numérico", () => {
+  it("ignora o prefixo TTPC do HUB, em qualquer caixa", () => {
+    const expected = { ok: true, path: "/fulfillment/202309/packages/1210965683910837563" };
+    expect(buildPackageEndpoint("TTPC1210965683910837563")).toEqual(expected);
+    expect(buildPackageEndpoint(" ttpc1210965683910837563 ")).toEqual(expected);
+  });
+
+  it("recusa vazio, só o prefixo e código não numérico", () => {
     expect(buildPackageEndpoint("").ok).toBe(false);
-    expect(buildPackageEndpoint("TTPC123").ok).toBe(false);
+    expect(buildPackageEndpoint("TTPC").ok).toBe(false);
+    expect(buildPackageEndpoint("ABC123").ok).toBe(false);
   });
 
   it("detecta o recurso pelo path", () => {

@@ -367,11 +367,11 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
             value={packageId}
             onChange={(e) => setPackageId(e.target.value)}
             spellCheck={false}
-            placeholder="ex.: 1153829348291"
+            placeholder="ex.: 1210965683910837563 ou TTPC1210965683910837563"
             className="inp font-mono"
           />
           <p className="mt-1 text-[11px] t-3">
-            Este endpoint é do módulo Fulfillment e exige o escopo de fulfillment no app. A
+            O prefixo TTPC (código do HUB) é ignorado. Este endpoint é do módulo Fulfillment e exige o escopo de fulfillment no app. A
             resposta traz o ID do pedido; use-o na aba Pedidos.
           </p>
         </>

@@ -639,18 +639,51 @@ export interface ProductSearchData {
 /* Pacote — GET /fulfillment/202309/packages/{package_id}               */
 /* -------------------------------------------------------------------- */
 
+/** Endereço do pacote (destinatário e remetente) — mesma forma do pedido, sem `district_info`. */
+export type PackageAddress = RecipientAddress;
+
+export interface PackageSku {
+  id?: string;
+  name?: string;
+  image_url?: string;
+  quantity?: number;
+}
+
+export interface PackageOrder {
+  id?: string;
+  skus?: PackageSku[];
+}
+
 /**
  * Detalhe do pacote. O snapshot local da documentação não cobre o módulo
- * Fulfillment, então só os campos usados na tela estão tipados e todos são
- * opcionais; a resposta completa continua disponível no JSON bruto.
+ * Fulfillment; os campos abaixo vêm de uma resposta real e todos são
+ * opcionais. A resposta completa continua disponível no JSON bruto.
  */
 export interface PackageDetail {
   package_id?: string;
-  order_id?: string;
-  order_ids?: string[];
-  orders?: { id?: string }[];
+  package_status?: string;
+  package_sub_status?: string;
+  create_time?: number;
+  update_time?: number;
   tracking_number?: string;
+  last_mile_tracking_number?: string;
   shipping_provider_id?: string;
   shipping_provider_name?: string;
-  package_status?: string;
+  shipping_type?: string;
+  handover_method?: string;
+  delivery_option_id?: string;
+  delivery_option_name?: string;
+  has_multi_skus?: boolean;
+  note_tag?: string;
+  split_and_combine_tag?: string;
+  order_line_item_ids?: string[];
+  dimension?: { length?: string; width?: string; height?: string; unit?: string };
+  weight?: { value?: string; unit?: string };
+  pickup_slot?: { start_time?: number; end_time?: number };
+  recipient_address?: PackageAddress;
+  sender_address?: PackageAddress;
+  orders?: PackageOrder[];
+  /** Formas alternativas, lidas só por garantia. */
+  order_id?: string;
+  order_ids?: string[];
 }

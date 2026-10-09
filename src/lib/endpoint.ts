@@ -168,9 +168,17 @@ export function buildOrderEndpoint(raw: string): EndpointResult {
   return { ok: true, path: `/order/${ORDER_API_VERSION}/orders?ids=${ids.join(",")}` };
 }
 
+/**
+ * Código de pacote como o HUB mostra: `TTPC` + `package_id`. O prefixo não
+ * existe na API, então é descartado (sem diferenciar maiúsculas).
+ */
+export function cleanPackageId(raw: string): string {
+  return cleanProductId(raw).replace(/^TTPC/i, "");
+}
+
 /** Monta `/fulfillment/{versão}/packages/{package_id}` ou explica por que não deu. */
 export function buildPackageEndpoint(rawId: string): EndpointResult {
-  const id = cleanProductId(rawId);
+  const id = cleanPackageId(rawId);
 
   if (id === "") {
     return { ok: false, reason: "Informe o código do pacote (package_id)." };
