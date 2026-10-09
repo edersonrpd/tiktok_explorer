@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Banknote,
   Boxes,
@@ -124,7 +124,19 @@ export function builderTabInfo(tab: BuilderTab): (typeof BUILDER_TABS)[number] {
  * nenhum, e o que define a consulta (a janela de datas) vive inteiramente
  * na query assinada.
  */
-export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
+/** IDs de pedido vindos de outra tela; `nonce` muda a cada envio, mesmo com os mesmos IDs. */
+export interface OrderPrefill {
+  ids: string;
+  nonce: number;
+}
+
+export function EndpointBuilder({
+  tab,
+  orderPrefill,
+}: {
+  tab: BuilderTab;
+  orderPrefill?: OrderPrefill | null;
+}) {
   const activeTab = builderTabInfo(tab);
   const [productId, setProductId] = useState("");
   const [searchStatus, setSearchStatus] = useState<ProductStatus>("ALL");
@@ -132,6 +144,9 @@ export function EndpointBuilder({ tab }: { tab: BuilderTab }) {
   const [searchPageToken, setSearchPageToken] = useState("");
   const [orderIds, setOrderIds] = useState("");
   const [packageId, setPackageId] = useState("");
+  useEffect(() => {
+    if (orderPrefill) setOrderIds(orderPrefill.ids);
+  }, [orderPrefill]);
   const [transactionOrderId, setTransactionOrderId] = useState("");
   const [statementId, setStatementId] = useState("");
   const [pageSize, setPageSize] = useState(String(DEFAULT_STATEMENT_PAGE_SIZE));

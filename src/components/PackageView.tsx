@@ -1,4 +1,4 @@
-import { MapPin, Package, Truck } from "lucide-react";
+import { ExternalLink, MapPin, Package, Truck } from "lucide-react";
 import type { PackageAddress, PackageDetail } from "../types/tiktok";
 import { formatEpochBR } from "../lib/format";
 import { packageOrderIds } from "../lib/packages";
@@ -71,7 +71,15 @@ function AddressBlock({ title, address }: { title: string; address: PackageAddre
 }
 
 /** Exibição do pacote retornado por GET /fulfillment/202309/packages/{id}. */
-export function PackageView({ data, requestedId }: { data: PackageDetail; requestedId: string }) {
+export function PackageView({
+  data,
+  requestedId,
+  onOpenOrders,
+}: {
+  data: PackageDetail;
+  requestedId: string;
+  onOpenOrders: (ids: string[]) => void;
+}) {
   const orderIds = packageOrderIds(data);
   const orders = data.orders ?? [];
   const sameTracking =
@@ -131,10 +139,19 @@ export function PackageView({ data, requestedId }: { data: PackageDetail; reques
               </span>
             ))}
             <CopyButton text={orderIds.join(", ")} label="Copiar" />
+            <button
+              type="button"
+              onClick={() => onOpenOrders(orderIds)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 font-bold t-1 hover:bg-[var(--surface-2,transparent)]"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Abrir pedido
+            </button>
           </div>
         )}
         <p className="mt-2 text-[11px] t-4">
-          Cole o ID na aba <strong>Pedidos</strong> para ver o pedido completo.
+          O botão leva o ID para a aba <strong>Pedidos</strong> com o endpoint já montado; falta só
+          assinar e colar a URL assinada, porque cada consulta é assinada separadamente.
         </p>
 
         {orders.some((o) => (o.skus ?? []).length > 0) && (

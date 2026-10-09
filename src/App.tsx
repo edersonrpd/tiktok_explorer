@@ -27,7 +27,12 @@ import type {
   TransactionsByOrderData,
   UnsettledTransactionsData,
 } from "./types/tiktok";
-import { builderTabInfo, EndpointBuilder, type BuilderTab } from "./components/EndpointBuilder";
+import {
+  builderTabInfo,
+  EndpointBuilder,
+  type BuilderTab,
+  type OrderPrefill,
+} from "./components/EndpointBuilder";
 import { QueryForm } from "./components/QueryForm";
 import { ErrorDisplay } from "./components/ErrorDisplay";
 import { ProductHeader } from "./components/ProductHeader";
@@ -210,6 +215,7 @@ export default function App() {
   // Aba do passo 1, escolhida no painel lateral. Depois de uma consulta ela
   // acompanha o tipo do resultado, para "Nova consulta" abrir no lugar certo.
   const [builderTab, setBuilderTab] = useState<BuilderTab>("product");
+  const [orderPrefill, setOrderPrefill] = useState<OrderPrefill | null>(null);
   // Com um resultado na tela, o formulário recolhe para dar espaço a ele —
   // recolhe só visualmente, sem desmontar, para não perder o que foi digitado.
   const [queryOpen, setQueryOpen] = useState(true);
@@ -355,6 +361,13 @@ export default function App() {
     setQueryOpen(false);
   }, []);
 
+  /** Leva os IDs de pedido de um pacote para a aba Pedidos, já com o endpoint montado. */
+  const handleOpenOrders = useCallback((ids: string[]) => {
+    setOrderPrefill((prev) => ({ ids: ids.join(", "), nonce: (prev?.nonce ?? 0) + 1 }));
+    setBuilderTab("order");
+    setQueryOpen(true);
+  }, []);
+
   const handleTabSelect = useCallback((tab: BuilderTab) => {
     setBuilderTab(tab);
     setQueryOpen(true);
@@ -413,7 +426,7 @@ export default function App() {
 
           {/* Recolhido com `hidden`, não desmontado: os campos preservam o que foi digitado. */}
           <div className={queryOpen ? "grid gap-4 lg:grid-cols-2 lg:items-start" : "hidden"}>
-            <EndpointBuilder tab={builderTab} />
+            <EndpointBuilder tab={builderTab} orderPrefill={orderPrefill} />
             <Card
               title="2. Colar a URL assinada e consultar"
               icon={<Search />}
@@ -539,6 +552,7 @@ export default function App() {
                 <PackageView
                   data={success.resource.data}
                   requestedId={success.resource.requestedId}
+                  onOpenOrders={handleOpenOrders}
                 />
               )}
 
