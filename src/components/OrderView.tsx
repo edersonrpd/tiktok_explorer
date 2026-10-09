@@ -46,6 +46,14 @@ export function OrderView({ orders, requestedIds }: { orders: Order[]; requested
   );
 }
 
+/** IDs de pacote do pedido (`packages[].id`, com fallback para `line_items[].package_id`). */
+function packageIds(order: Order): string | undefined {
+  const ids = new Set<string>();
+  for (const p of order.packages ?? []) if (p.id) ids.add(p.id);
+  for (const li of order.line_items ?? []) if (li.package_id) ids.add(li.package_id);
+  return ids.size > 0 ? [...ids].join(", ") : undefined;
+}
+
 function OrderCard({ order }: { order: Order }) {
   const items = order.line_items ?? [];
   const currency = order.payment?.currency;
@@ -66,6 +74,7 @@ function OrderCard({ order }: { order: Order }) {
         <Field label="Fulfillment" value={order.fulfillment_type} />
         <Field label="Transportadora" value={order.shipping_provider} />
         <Field label="Rastreio" value={order.tracking_number} mono />
+        <Field label="Código do pacote" value={packageIds(order)} mono />
         <Field label="Forma de pagamento" value={order.payment_method_name} />
         <Field label="Comprador" value={order.buyer_nickname ?? order.user_id} mono />
         <Field
